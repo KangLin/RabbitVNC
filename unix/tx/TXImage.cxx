@@ -19,7 +19,7 @@
 // TXImage.cxx
 //
 
-
+#include <stdlib.h> /*exit*/
 #include <stdio.h>
 #include <strings.h>
 #include <sys/types.h>
