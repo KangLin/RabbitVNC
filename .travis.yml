@@ -1,0 +1,30 @@
+language: cpp
+
+cache: apt
+
+jdk: oraclejdk7
+
+compiler:
+  - g++
+  - gcc
+
+os:
+  - linux
+
+env:
+  matrix:
+
+install:
+
+before_script:
+
+script:
+  - mkdir build
+  - cd build
+  - cmake ..
+  - cmake --build .
+
+notifications:
+  email: kl222@126.com
+  on_success: never  # [always|never|change]
+  on_failure: always
