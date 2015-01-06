@@ -17,7 +17,7 @@ add_subdirectory(rfb)
 # is passed (additionally, libvnc is not used on Windows.)
 
 if(CMAKE_COMPILER_IS_GNUCXX AND (CMAKE_SIZEOF_VOID_P MATCHES 8) AND NOT WIN32)
-  set_target_properties(os rdr network Xregion rfb
+  set_target_properties(rdr network Xregion rfb
     PROPERTIES COMPILE_FLAGS -fPIC)
   if(USE_INCLUDED_ZLIB)
     set_target_properties(zlib PROPERTIES COMPILE_FLAGS -fPIC)

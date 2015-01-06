@@ -12,7 +12,7 @@ add_library(rdr STATIC
     ZlibOutStream.cxx
     )
 
-set(RDR_LIBRARIES ${ZLIB_LIBRARIES} os)
+set(RDR_LIBRARIES ${ZLIB_LIBRARIES})
 if(WIN32)
 	set(RDR_LIBRARIES ${RDR_LIBRARIES} ws2_32)
 endif()

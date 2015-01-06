@@ -52,7 +52,7 @@ set(RFB_SOURCES
   util.cxx
   d3des.c)
 
-set(RFB_LIBRARIES os rdr)
+set(RFB_LIBRARIES rdr)
 
 add_library(rfb STATIC ${RFB_SOURCES})
 
