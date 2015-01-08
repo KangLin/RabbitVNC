@@ -1,5 +1,9 @@
 include_directories(${CMAKE_SOURCE_DIR}/common ${JPEG_INCLUDE_DIR})
 
+if(WIN32)
+include_directories(${CMAKE_SOURCE_DIR}/win)
+endif()
+
 set(RFB_SOURCES
   Blacklist.cxx
   CConnection.cxx

@@ -55,6 +55,45 @@ message(STATUS "CMAKE_BUILD_TYPE = ${CMAKE_BUILD_TYPE}")
 message(STATUS "VERSION = ${VERSION}")
 add_definitions(-DBUILD_TIMESTAMP="${BUILD_TIMESTAMP}")
 
+# Minimum version is Windows 2000 (5.0)
+if(WIN32)
+  if(NOT CMAKE_SIZEOF_VOID_P MATCHES 8)
+    add_definitions(-D_WIN32_IE=0x0500 -D_WIN32_WINNT=0x0500)
+  else()
+    set(WIN64 1)
+    # Win64 doesn't like us requesting a Windows version that didn't have
+    # 64-bit support. Request XP (5.1) instead.
+    add_definitions(-D_WIN32_IE=0x0501 -D_WIN32_WINNT=0x0501)
+  endif()
+endif()
+
+if(CMAKE_SIZEOF_VOID_P MATCHES 8)
+  message(STATUS "64-bit build")
+else()
+  message(STATUS "32-bit build")
+endif()
+
+# CMake doesn't properly support resource compilation with MinGW.  Boo!
+if(MINGW)
+  if(NOT DEFINED RC)
+    set(CMAKE_RC_COMPILER_INIT windres)
+  else()
+    set(CMAKE_RC_COMPILER_INIT ${RC})
+  endif()
+  enable_language(RC)
+  message(STATUS "Resource compiler: ${CMAKE_RC_COMPILER}")
+  set(CMAKE_RC_COMPILE_OBJECT
+    "<CMAKE_RC_COMPILER> <FLAGS> <DEFINES> -o <OBJECT> --output-format=coff <SOURCE>")
+endif()
+
+# MinGW64 has header support but no library support for IActiveDesktop, so we
+# need to check for both the header and library and use our own implementation
+# in common/os if either doesn't exist.
+if(WIN32)
+  check_c_source_compiles("#include <windows.h>\n#include <wininet.h>\n#include <shlobj.h>\nint main(int c, char** v) {IActiveDesktop iad; return 0;}" HAVE_ACTIVE_DESKTOP_H)
+  check_c_source_compiles("#include <windows.h>\n#include <wininet.h>\n#include <shlobj.h>\nint main(int c, char** v) {GUID i = CLSID_ActiveDesktop; return 0;}" HAVE_ACTIVE_DESKTOP_L)
+endif()
+
 # Check for zlib
 find_package(ZLIB)
 option(USE_INCLUDED_ZLIB "Force use of the bundled zlib")
