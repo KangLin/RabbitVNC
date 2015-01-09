@@ -1,9 +1,11 @@
-rabbitvnc
+RabbitVnc
 ---------
 
-Rabbitvnc is a cross-platform remote control library and program vnc-based.
+RabbitVnc is a cross-platform remote control library and program vnc-based.
 
-Build status:[![Build Status](https://travis-ci.org/KangLin/rabbitvnc.png)](https://travis-ci.org/KangLin/rabbitvnc)
+Project address:https://github.com/KangLin/rabbitvnc
+
+Build status:  [![Build Status](https://travis-ci.org/KangLin/rabbitvnc.png)](https://travis-ci.org/KangLin/rabbitvnc)
 
 ### Compile tools:
 
@@ -50,6 +52,6 @@ Build status:[![Build Status](https://travis-ci.org/KangLin/rabbitvnc.png)](http
    * Into source code root
    * mkdir build
    * cd build
-   * cmake .. -DCMAKE_TOOLCHAIN_FILE=../cmake/Toolchain-cross-mingw32-linux.cmake -DUSER_ROOT_PATH=..
+   * cmake .. -DCMAKE_TOOLCHAIN_FILE=../cmake/Toolchain-cross-mingw32-linux.cmake -DUSER_ROOT_PATH=.. -DCOMPILER_PREFIX="i586-mingw32msvc"
    * cmake --build .
    
