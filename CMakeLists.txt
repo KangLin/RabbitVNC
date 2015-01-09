@@ -131,7 +131,7 @@ if(WIN32)
 else()
   # No interest in building x related parts on Apple
   if(NOT APPLE)
-    add_subdirectory(unix)
+    #add_subdirectory(unix)
   endif()
 endif()
 

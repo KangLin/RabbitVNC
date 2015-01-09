@@ -17,7 +17,7 @@ env:
 install:
 
 before_script:
-
+  - ls /usr/bin
 script:
   - mkdir build
   - cd build
