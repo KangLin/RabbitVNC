@@ -175,9 +175,9 @@ END
 // HTTPFILE
 //
 
-/VNCVIEWER.JAR          HTTPFILE                "..\\..\\common\\javabin\\vncviewer.jar"
-/LOGO150X150.GIF        HTTPFILE                "..\\..\\common\\javabin\\logo150x150.gif"
-/INDEX.VNC              HTTPFILE                "..\\..\\common\\javabin\\index.vnc"
+VNCVIEWER.JAR          HTTPFILE                "..\\..\\common\\javabin\\vncviewer.jar"
+LOGO150X150.GIF        HTTPFILE                "..\\..\\common\\javabin\\logo150x150.gif"
+INDEX.VNC              HTTPFILE                "..\\..\\common\\javabin\\index.vnc"
 
 /////////////////////////////////////////////////////////////////////////////
 //

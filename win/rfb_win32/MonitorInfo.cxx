@@ -21,6 +21,7 @@
 #include <rfb_win32/Win32Util.h>
 #include <rdr/Exception.h>
 #include <rfb/LogWriter.h>
+#include <rfb/util.h>
 
 using namespace rfb;
 using namespace win32;
@@ -188,10 +189,10 @@ void MonitorInfo::clipTo(RECT* r) {
   if (r->right > rcWork.right) {
     r->left += rcWork.right - r->right; r->right = rcWork.right;
   }
-  r->left = max(r->left, rcWork.left);
-  r->right = min(r->right, rcWork.right);
-  r->top = max(r->top, rcWork.top);
-  r->bottom = min(r->bottom, rcWork.bottom);
+  r->left = __rfbmax(r->left, rcWork.left);
+  r->right = __rfbmin(r->right, rcWork.right);
+  r->top = __rfbmax(r->top, rcWork.top);
+  r->bottom = __rfbmin(r->bottom, rcWork.bottom);
 }
 
 void MonitorInfo::clipTo(HWND handle) {

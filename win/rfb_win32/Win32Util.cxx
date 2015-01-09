@@ -62,7 +62,7 @@ const TCHAR* FileVersionInfo::getVerString(const TCHAR* name, DWORD langId) {
     langId = langId >> 8;
   }
 
-  TCharArray langIdStr = rdr::HexOutStream::binToHexStr(langIdBuf, sizeof(langId));
+  TCharArray langIdStr(rdr::HexOutStream::binToHexStr(langIdBuf, sizeof(langId)));
   TCharArray infoName(_tcslen(_T("StringFileInfo")) + 4 + _tcslen(name) + _tcslen(langIdStr.buf));
   _stprintf(infoName.buf, _T("\\StringFileInfo\\%s\\%s"), langIdStr.buf, name);
 
@@ -70,7 +70,7 @@ const TCHAR* FileVersionInfo::getVerString(const TCHAR* name, DWORD langId) {
   TCHAR* buffer = 0;
   UINT length = 0;
   if (!VerQueryValue(buf, infoName.buf, (void**)&buffer, &length)) {
-    printf("unable to find %s version string", CStr(infoName.buf));
+    printf("unable to find %s version string", infoName.buf);
     throw rdr::Exception("VerQueryValue failed");
   }
   return buffer;

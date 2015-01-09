@@ -1,7 +1,10 @@
 include_directories(${CMAKE_SOURCE_DIR}/common/javabin ${CMAKE_CURRENT_SOURCE_DIR})
 
 set(VNCVIEWER_JAR_PATH ${CMAKE_SOURCE_DIR}/common/javabin/VncViewer.jar)
+
+if(NOT MINGW)
 SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /SUBSYSTEM:CONSOLE ")
+endif()
 
 add_executable(winvnc4 WIN32
   buildTime.cxx
