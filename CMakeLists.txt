@@ -99,7 +99,7 @@ if(WIN32)
 endif()
 
 # X11 stuff. It's in a if() so that we can say REQUIRED
-if(UNIX AND NOT APPLE)
+if(UNIX AND (NOT APPLE OR WIN32))
   find_package(X11 REQUIRED)
 endif()
 
@@ -131,7 +131,7 @@ if(WIN32)
 else()
   # No interest in building x related parts on Apple
   if(NOT APPLE)
-    #add_subdirectory(unix)
+#    add_subdirectory(unix)
   endif()
 endif()
 

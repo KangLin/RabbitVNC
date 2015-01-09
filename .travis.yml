@@ -1,28 +1,29 @@
 language: cpp
 
+os:
+  - linux
+  - windows
+
 cache: apt
 
 jdk: oraclejdk7
 
 compiler:
   - g++
-  - gcc
-
-os:
-  - linux
+  #- gcc
 
 env:
-  matrix:
+  - TARGET_OS=windows
+  - TARGET_OS=unix
 
 install:
+  - travis/install-build-depends.sh
 
 before_script:
-  - ls /usr/bin
+  - travis/build-before.sh
+
 script:
-  - mkdir build
-  - cd build
-  - cmake ..
-  - cmake --build .
+  - travis/build.sh
 
 notifications:
   email: kl222@126.com
