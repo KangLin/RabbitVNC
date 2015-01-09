@@ -55,6 +55,10 @@ message(STATUS "CMAKE_BUILD_TYPE = ${CMAKE_BUILD_TYPE}")
 message(STATUS "VERSION = ${VERSION}")
 add_definitions(-DBUILD_TIMESTAMP="${BUILD_TIMESTAMP}")
 
+if(WIN32)
+  set(BUILD_WINVNC 1)
+endif()
+
 # Minimum version is Windows 2000 (5.0)
 if(WIN32)
   if(NOT CMAKE_SIZEOF_VOID_P MATCHES 8)
@@ -94,6 +98,11 @@ if(WIN32)
   check_c_source_compiles("#include <windows.h>\n#include <wininet.h>\n#include <shlobj.h>\nint main(int c, char** v) {GUID i = CLSID_ActiveDesktop; return 0;}" HAVE_ACTIVE_DESKTOP_L)
 endif()
 
+# X11 stuff. It's in a if() so that we can say REQUIRED
+if(UNIX AND NOT APPLE)
+  find_package(X11 REQUIRED)
+endif()
+
 # Check for zlib
 find_package(ZLIB)
 option(USE_INCLUDED_ZLIB "Force use of the bundled zlib")
@@ -115,8 +124,16 @@ else()
 endif()
 check_function_exists(inet_aton HAVE_INET_ATON)
 
-
 add_subdirectory(common)
+
+if(WIN32)
+  add_subdirectory(win)
+else()
+  # No interest in building x related parts on Apple
+  if(NOT APPLE)
+    add_subdirectory(unix)
+  endif()
+endif()
 
 # uninstall
 configure_file("${CMAKE_SOURCE_DIR}/cmake/cmake_uninstall.cmake.in"
