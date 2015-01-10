@@ -31,8 +31,8 @@ set(LOCALE_DIR "${DATA_DIR}/locale")
 set(DOC_DIR "${CMAKE_INSTALL_PREFIX}/share/doc/${CMAKE_PROJECT_NAME}-${VERSION}")
 
 if(WIN32)
-set(BIN_DIR "${CMAKE_INSTALL_PREFIX}")
-set(DOC_DIR "${CMAKE_INSTALL_PREFIX}")
+  set(BIN_DIR "${CMAKE_INSTALL_PREFIX}")
+  set(DOC_DIR "${CMAKE_INSTALL_PREFIX}")
 endif()
 
 set(BUILD_TIMESTAMP "")
@@ -99,7 +99,7 @@ if(WIN32)
 endif()
 
 # X11 stuff. It's in a if() so that we can say REQUIRED
-if(UNIX AND (NOT APPLE OR WIN32))
+if(UNIX AND NOT (APPLE OR WIN32))
   find_package(X11 REQUIRED)
 endif()
 
