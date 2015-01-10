@@ -1,4 +1,4 @@
-include_directories(${CMAKE_SOURCE_DIR}/common/javabin ${CMAKE_CURRENT_SOURCE_DIR})
+include_directories(${CMAKE_SOURCE_DIR}/common/javabin ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/common)
 
 set(VNCVIEWER_JAR_PATH ${CMAKE_SOURCE_DIR}/common/javabin/VncViewer.jar)
 

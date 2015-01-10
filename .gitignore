@@ -1,4 +1,5 @@
 *~
+*.kdev4
 .CCodec.h.kate-swp
 .kdev4/
 .kdev_include_paths

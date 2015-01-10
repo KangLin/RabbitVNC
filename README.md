@@ -48,10 +48,16 @@ Build status:  [![Build Status](https://travis-ci.org/KangLin/rabbitvnc.png)](ht
    * cmake --build .
 
 3. On unix or linux, use mingw compile for windows
-   * Install mingw-w64 (ag: sudo apt-get install mingw-w64)
+   * Install mingw-w64
+      - ubuntu 14.04
+        + sudo apt-get install mingw-w64
+      - ubuntu 12.04
+        + sudo apt-get install g++-mingw-w64-x86-64 binutils-mingw-w64-i686
+        + sudo apt-get install gcc-mingw-w64-i686 g++-mingw-w64
+        + sudo apt-get install mingw-w64 mingw-w64-tools
    * Into source code root
    * mkdir build
    * cd build
-   * cmake .. -DCMAKE_TOOLCHAIN_FILE=../cmake/Toolchain-cross-mingw32-linux.cmake -DUSER_ROOT_PATH=.. -DCOMPILER_PREFIX="i586-mingw32msvc"
+   * cmake .. -DCMAKE_TOOLCHAIN_FILE=../cmake/Toolchain-cross-mingw32-linux.cmake -DUSER_ROOT_PATH=.. -DCOMPILER_PREFIX="i686-w64-mingw32"
    * cmake --build .
    
