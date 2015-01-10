@@ -75,7 +75,6 @@ Makefile
 *.pgd
 *.meta
 *.tlog
-*.manifest
 *.res
 *.pch
 *.exp
