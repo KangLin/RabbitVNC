@@ -13,7 +13,8 @@ compiler:
   #- gcc
 
 env:
-  - TARGET_OS=windows
+#  - TARGET_OS=windows
+#  - TARGET_OS=windows64
   - TARGET_OS=unix
 
 install:

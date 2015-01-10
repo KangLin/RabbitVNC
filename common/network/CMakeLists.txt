@@ -14,7 +14,7 @@ if(UNIX)
 endif()
 
 #install library files
-install(TARGETS network #ARCHIVE
+install(TARGETS network
    RUNTIME DESTINATION ${BIN_DIR}
    LIBRARY DESTINATION ${BIN_DIR}
    ARCHIVE DESTINATION ${LIB_DIR}

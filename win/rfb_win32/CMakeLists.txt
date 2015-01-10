@@ -1,4 +1,5 @@
 include_directories(${CMAKE_SOURCE_DIR}/common)
+
 set(RFB_WIN32_SOURCES
     AboutDialog.cxx
     LaunchProcess.cxx

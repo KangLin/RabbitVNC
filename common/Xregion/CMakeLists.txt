@@ -1,6 +1,5 @@
-
-
 set(INCLUDE_FILE_SOURCE region.h  Xregion.h)
+
 add_library(Xregion STATIC
   Region.c
   ${INCLUDE_FILE_SOURCE})

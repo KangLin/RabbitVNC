@@ -1,3 +1,4 @@
+*.swp
 *~
 *.kdev4
 .CCodec.h.kate-swp
