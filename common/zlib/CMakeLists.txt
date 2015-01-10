@@ -19,3 +19,26 @@ add_library(zlib STATIC
     infcodes.c
     infutil.c
     inffast.c)
+
+set(INCLUDE_FILE_SOURCE 
+	deflate.h
+	infcodes.h
+	inffixed.h
+	infutil.h
+  	zconf.h
+  	zutil.h
+	infblock.h
+	inffast.h
+ 	inftrees.h
+  	trees.h
+	zlib.h
+)
+#install library files
+install(TARGETS zlib
+   RUNTIME DESTINATION ${BIN_DIR}
+   LIBRARY DESTINATION ${BIN_DIR}
+   ARCHIVE DESTINATION ${LIB_DIR}
+)
+
+#install header files
+INSTALL(FILES ${INCLUDE_FILE_SOURCE} DESTINATION "${INCLUDE_DIR}/zlib")

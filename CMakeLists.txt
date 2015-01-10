@@ -25,6 +25,8 @@ set(RCVERSION 0,1,00,0)
 
 # Installation paths
 set(BIN_DIR "${CMAKE_INSTALL_PREFIX}/bin")
+set(LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
+set(INCLUDE_DIR "${CMAKE_INSTALL_PREFIX}/include")
 set(DATA_DIR "${CMAKE_INSTALL_PREFIX}/share")
 set(MAN_DIR "${DATA_DIR}/man")
 set(LOCALE_DIR "${DATA_DIR}/locale")
