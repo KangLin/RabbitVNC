@@ -35,8 +35,9 @@
 #include <X11/X.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
-#include <X11/extensions/XTest.h>
-
+#ifdef HAVE_XTEST
+    #include <X11/extensions/XTest.h>
+#endif
 
 //#include <rfb/Encoder.h>
 
@@ -115,6 +116,7 @@ public:
     : dpy(dpy_), pb(0), server(0), image(0), oldButtonMask(0),
       haveXtest(false), pollTimer(this)
   {
+#ifdef HAVE_XTEST
     int xtestEventBase;
     int xtestErrorBase;
     int major, minor;
@@ -125,9 +127,12 @@ public:
       vlog.info("XTest extension present - version %d.%d",major,minor);
       haveXtest = true;
     } else {
+#endif
       vlog.info("XTest extension not present");
       vlog.info("unable to inject events or display while server is grabbed");
-    }
+#ifdef HAVE_XTEST
+	}
+#endif
 
   }
   virtual ~XDesktop() {
@@ -169,6 +174,7 @@ public:
   }
 
   virtual void pointerEvent(const Point& pos, int buttonMask) {
+#ifdef HAVE_XTEST
     if (!haveXtest) return;
     XTestFakeMotionEvent(dpy, DefaultScreen(dpy), pos.x, pos.y, CurrentTime);
     if (buttonMask != oldButtonMask) {
@@ -183,13 +189,16 @@ public:
       }
     }
     oldButtonMask = buttonMask;
+#endif
   }
 
   virtual void keyEvent(rdr::U32 key, bool down) {
+#ifdef HAVE_XTEST
     if (!haveXtest) return;
     int keycode = XKeysymToKeycode(dpy, key);
     if (keycode)
       XTestFakeKeyEvent(dpy, keycode, down, CurrentTime);
+#endif
   }
 
   virtual void clientCutText(const char* str, int len) {
