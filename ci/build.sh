@@ -1,8 +1,8 @@
 #!/bin/sh
-set -ev
+set -e
 
-mkdir -p build
-cd build
+mkdir -p build_$TARGET_OS
+cd build_$TARGET_OS
 
 if [ "windows" = "$TARGET_OS" ]; then
   cmake .. -DCMAKE_TOOLCHAIN_FILE=../cmake/Toolchain-cross-mingw32-linux.cmake \

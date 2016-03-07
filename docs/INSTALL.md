@@ -47,12 +47,12 @@ INSTALL
 3. On unix or linux, use mingw cross compile for windows
    * Install cmake program
    * Install mingw-w64
-      - ubuntu 14.04
-        + sudo apt-get install mingw-w64
-      - ubuntu 12.04
-        + sudo apt-get install g++-mingw-w64-x86-64 binutils-mingw-w64-i686
-        + sudo apt-get install gcc-mingw-w64-i686 g++-mingw-w64
-        + sudo apt-get install mingw-w64 mingw-w64-tools
+      + ubuntu 14.04
+        - sudo apt-get install mingw-w64
+      + ubuntu 12.04
+        - sudo apt-get install g++-mingw-w64-x86-64 binutils-mingw-w64-i686
+        - sudo apt-get install gcc-mingw-w64-i686 g++-mingw-w64
+        - sudo apt-get install mingw-w64 mingw-w64-tools
    * Into source code root directory
    * mkdir build
    * cd build

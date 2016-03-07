@@ -8,6 +8,7 @@ RabbitVnc is a cross-platform remote control library and program vnc-based.
 Project address:https://github.com/KangLin/rabbitvnc
 
 Build status:  [![Build Status](https://travis-ci.org/KangLin/rabbitvnc.png)](https://travis-ci.org/KangLin/rabbitvnc)
+    [![Circle CI](https://circleci.com/gh/KangLin/rabbitvnc.svg?style=svg)](https://circleci.com/gh/KangLin/rabbitvnc)
   
 ### Documents
 

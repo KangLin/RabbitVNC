@@ -18,13 +18,13 @@ env:
   - TARGET_OS=unix
 
 install:
-  - travis/install-build-depends.sh
+  - . ci/build-depends.sh
 
 before_script:
-  - travis/build-before.sh
+  - . ci/build-before.sh
 
 script:
-  - travis/build.sh
+  - . ci/build.sh
 
 notifications:
   email: kl222@126.com
