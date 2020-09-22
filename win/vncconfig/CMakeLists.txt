@@ -1,3 +1,5 @@
+project(vncconfig)
+
 include_directories(${CMAKE_BINARY_DIR}/win)
 
 add_executable(vncconfig WIN32
@@ -6,8 +8,14 @@ add_executable(vncconfig WIN32
   vncconfig.cxx
   vncconfig.rc)
 
-target_link_libraries(vncconfig rfb_win32 rfb Xregion network rdr ws2_32.lib)
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    VERSION ${BUILD_VERSION})
 
-install(TARGETS vncconfig
-  RUNTIME DESTINATION ${BIN_DIR}
+target_link_libraries(${PROJECT_NAME} PRIVATE rfb_win32 rfb Xregion network)
+
+install(TARGETS ${PROJECT_NAME}
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+        COMPONENT Runtime
 )

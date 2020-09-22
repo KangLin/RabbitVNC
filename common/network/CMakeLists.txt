@@ -1,24 +1,91 @@
-include_directories(${CMAKE_SOURCE_DIR}/common)
+project(network)
 
-set(INCLUDE_FILE_SOURCE Socket.h TcpSocket.h)
+set(INSTALLHEADER_FILES Socket.h TcpSocket.h)
 
-add_library(network STATIC
-  TcpSocket.cxx ${INCLUDE_FILE_SOURCE})
+add_library(${PROJECT_NAME} TcpSocket.cxx ${INSTALLHEADER_FILES})
 
 if(WIN32)
-	target_link_libraries(network ws2_32)
+	target_link_libraries(${PROJECT_NAME} PUBLIC ws2_32)
 endif()
+
+target_link_libraries(${PROJECT_NAME} PUBLIC rdr)
+
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
+    PUBLIC_HEADER "${INSTALLHEADER_FILES}" # Install head files
+    VERSION ${BUILD_VERSION})
+
+# See: http://www.it1352.com/478094.html
+target_include_directories(${PROJECT_NAME} PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/common>)
+
+if(MSVC)
+    target_compile_options(${PROJECT_NAME} PRIVATE
+        "$<$<C_COMPILER_ID:MSVC>:/utf-8>"
+        "$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
+endif()
+
+GENERATE_EXPORT_HEADER(${PROJECT_NAME})
+string(TOLOWER ${PROJECT_NAME} LOWER_PROJECT_NAME)
+set(INSTALLHEADER_FILES ${INSTALLHEADER_FILES} 
+    ${CMAKE_CURRENT_BINARY_DIR}/${LOWER_PROJECT_NAME}_export.h)
+file(COPY ${CMAKE_CURRENT_BINARY_DIR}/${LOWER_PROJECT_NAME}_export.h
+    DESTINATION ${CMAKE_BINARY_DIR})
+
+if(ANDROID)
+    # Install target
+    INSTALL(TARGETS ${PROJECT_NAME}
+        EXPORT ${PROJECT_NAME}Config
+        RUNTIME DESTINATION "libs/${ANDROID_ABI}"
+            COMPONENT Runtime
+        LIBRARY DESTINATION "libs/${ANDROID_ABI}"
+            COMPONENT Runtime
+        ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+        PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}
+        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        )
+else()
+    # Install target
+    if(WIN32)
+        INSTALL(TARGETS ${PROJECT_NAME}
+            EXPORT ${PROJECT_NAME}Config
+            RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+                COMPONENT Runtime
+            LIBRARY DESTINATION "${CMAKE_INSTALL_BINDIR}"
+                COMPONENT Runtime
+            ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+            PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}
+            INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+            )
+    else()
+        INSTALL(TARGETS ${PROJECT_NAME}
+            EXPORT ${PROJECT_NAME}Config
+            RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+                COMPONENT Runtime
+            LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+                COMPONENT Runtime
+            ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+            PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}
+            INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+            )
+    endif()
+endif()
+
+export(TARGETS ${PROJECT_NAME}
+    APPEND FILE ${CMAKE_BINARY_DIR}/${PROJECT_NAME}Config.cmake
+    )
+# Install cmake configure files
+install(EXPORT ${PROJECT_NAME}Config
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake"
+    )
+write_basic_package_version_file(
+    "${CMAKE_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
+    VERSION ${BUILD_VERSION}
+    COMPATIBILITY AnyNewerVersion)
+install(FILES "${CMAKE_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake" DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake")
 
 if(UNIX)
-  libtool_create_control_file(network)
+  libtool_create_control_file(${PROJECT_NAME})
 endif()
-
-#install library files
-install(TARGETS network
-   RUNTIME DESTINATION ${BIN_DIR}
-   LIBRARY DESTINATION ${BIN_DIR}
-   ARCHIVE DESTINATION ${LIB_DIR}
-)
-
-#install header files
-INSTALL(FILES ${INCLUDE_FILE_SOURCE} DESTINATION "${INCLUDE_DIR}/network")

@@ -1,13 +1,97 @@
-#
-# Setup
-#
-
 cmake_minimum_required(VERSION 2.8)
 
-# Internal cmake modules
-set(CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/Modules)
+if(POLICY CMP0083)
+    cmake_policy(SET CMP0083 NEW)
+endif()
 
-include(CheckIncludeFiles)
+if(POLICY CMP0020)
+    cmake_policy(SET CMP0020 NEW)
+endif()
+
+set(CMAKE_INCLUDE_CURRENT_DIR ON)
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Internal cmake modules
+set(CMAKE_MODULE_PATH
+    ${CMAKE_SOURCE_DIR}/cmake/Modules
+    ${CMAKE_SOURCE_DIR}/cmake)
+
+# Uninstall 
+CONFIGURE_FILE(
+    "${CMAKE_SOURCE_DIR}/cmake/cmake_uninstall.cmake.in"
+    "${CMAKE_BINARY_DIR}/cmake_uninstall.cmake"
+    IMMEDIATE @ONLY)
+# Create the uninstall target
+ADD_CUSTOM_TARGET(uninstall
+    "${CMAKE_COMMAND}" -P "${CMAKE_BINARY_DIR}/cmake_uninstall.cmake")
+
+SET(BUILD_VERSION "v0.0.4")
+# Find Git Version Patch
+IF(EXISTS "${CMAKE_SOURCE_DIR}/.git")
+    if(NOT GIT)
+        SET(GIT $ENV{GIT})
+    endif()
+    if(NOT GIT)
+        FIND_PROGRAM(GIT NAMES git git.exe git.cmd)
+    endif()
+    IF(GIT)
+        EXECUTE_PROCESS(
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            COMMAND ${GIT} describe --tags
+            OUTPUT_VARIABLE GIT_VERSION  OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+        if(NOT GIT_VERSION)
+            EXECUTE_PROCESS(
+                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                COMMAND ${GIT} rev-parse --short HEAD
+                OUTPUT_VARIABLE GIT_VERSION OUTPUT_STRIP_TRAILING_WHITESPACE
+            )
+        endif()
+        SET(BUILD_VERSION ${GIT_VERSION})
+    ENDIF()
+ENDIF()
+message("BUILD_VERSION:${BUILD_VERSION}")
+set(VERSION ${BUILD_VERSION})
+
+if(NOT DEFINED CMAKE_BUILD_TYPE)
+	set(CMAKE_BUILD_TYPE "Release")
+endif(NOT DEFINED CMAKE_BUILD_TYPE)
+if("Debug" STREQUAL CMAKE_BUILD_TYPE)
+    add_definitions(-D_DEBUG)
+endif()
+
+IF(MSVC)
+    # This option is to enable the /MP switch for Visual Studio 2005 and above compilers
+    OPTION(WIN32_USE_MP "Set to ON to build with the /MP option (Visual Studio 2005 and above)." ON)
+    MARK_AS_ADVANCED(WIN32_USE_MP)
+    IF(WIN32_USE_MP)
+        #SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
+        add_compile_options(/MP)
+    ENDIF(WIN32_USE_MP)
+    add_compile_options("$<$<C_COMPILER_ID:MSVC>:/utf-8>")
+    add_compile_options("$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
+ENDIF(MSVC)
+
+SET(BUILD_SHARED_LIBS ON CACHE BOOL "Build shared libs")
+if (BUILD_SHARED_LIBS)
+    add_definitions(-DBUILD_SHARED_LIBS)
+    if (CMAKE_COMPILER_IS_GNUCXX AND NOT MINGW)
+       # Just setting CMAKE_POSITION_INDEPENDENT_CODE should be enough to set
+       # -fPIC for GCC but sometimes it still doesn't get set, so make sure it
+       # does.
+       add_definitions("-fPIC")
+    endif()
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+else(BUILD_SHARED_LIBS)
+    add_definitions(-DQT_STATICPLUGIN)
+endif(BUILD_SHARED_LIBS)
+
+include(CMakePackageConfigHelpers)
+include(GNUInstallDirs)
+include(GenerateExportHeader)
+include(CheckIncludeFile)
+include(CheckIncludeFileCXX)
 include(CheckFunctionExists)
 include(CheckLibraryExists)
 include(CheckTypeSize)
@@ -20,7 +104,7 @@ SET(MAJOR_VERSION 0)
 SET(MINOR_VERSION 1)
 SET(PATCH_VERSION 00)
 
-project(rabbitvnc)
+project(RabbitVNC)
 set(VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_VERSION})
 
 SET(CPACK_PACKAGE_VERSION_MAJOR "${MAJOR_VERSION}")
@@ -117,16 +201,6 @@ if(UNIX AND NOT (APPLE OR WIN32))
   find_package(X11 REQUIRED)
 endif()
 
-# Check for zlib
-find_package(ZLIB)
-option(USE_INCLUDED_ZLIB "Force use of the bundled zlib")
-if(NOT ZLIB_FOUND)
-  set(USE_INCLUDED_ZLIB 1)
-endif()
-if(USE_INCLUDED_ZLIB)
-  message(STATUS "Using included zlib library")
-endif()
-
 # Check for socket functions
 if(WIN32)
   set(CMAKE_EXTRA_INCLUDE_FILES winsock2.h ws2tcpip.h)
@@ -138,6 +212,12 @@ else()
 endif()
 check_function_exists(inet_aton HAVE_INET_ATON)
 
+add_custom_target(install-runtime
+  COMMAND
+     "${CMAKE_COMMAND}" -DCMAKE_INSTALL_COMPONENT=Runtime 
+     -P "${CMAKE_CURRENT_BINARY_DIR}/cmake_install.cmake"
+)
+
 add_subdirectory(common)
 
 if(WIN32)
@@ -148,9 +228,3 @@ else()
     add_subdirectory(unix)
   endif()
 endif()
-
-# uninstall
-configure_file("${CMAKE_SOURCE_DIR}/cmake/cmake_uninstall.cmake.in"
-  "cmake_uninstall.cmake" IMMEDIATE @ONLY)
-
-add_custom_target(uninstall COMMAND ${CMAKE_COMMAND} -P cmake_uninstall.cmake)
