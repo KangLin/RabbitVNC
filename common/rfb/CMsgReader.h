@@ -16,8 +16,8 @@
  * USA.
  */
 //
-// CMsgReader - class for reading RFB messages on the server side
-// (i.e. messages from client to server).
+// CMsgReader - class for reading RFB messages on the client side
+// (i.e. messages from server to client).
 //
 
 #ifndef __RFB_CMSGREADER_H__

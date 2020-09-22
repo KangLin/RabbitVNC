@@ -16,7 +16,7 @@
  * USA.
  */
 //
-// CMsgWriter - class for writing RFB messages on the server side.
+// CMsgWriter - class for writing RFB messages on the client side.
 //
 
 #ifndef __RFB_CMSGWRITER_H__
