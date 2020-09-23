@@ -3,18 +3,18 @@
 project(zlib)
 
 set(INSTALLHEADER_FILES 
-	deflate.h
-	infcodes.h
-	inffixed.h
-	infutil.h
-  	zconf.h
-  	zutil.h
-	infblock.h
-	inffast.h
- 	inftrees.h
-  	trees.h
-	zlib.h
-)
+    deflate.h
+    infcodes.h
+    inffixed.h
+    infutil.h
+    zconf.h
+    zutil.h
+    infblock.h
+    inffast.h
+    inftrees.h
+    trees.h
+    zlib.h
+    )
 
 set(SOURCE_FILES
     adler32.c
@@ -34,6 +34,7 @@ set(SOURCE_FILES
 
 add_library(${PROJECT_NAME} ${SOURCE_FILES} ${INSTALLHEADER_FILES})
 set_target_properties(${PROJECT_NAME} PROPERTIES
+    OUTPUT_NAME z
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
@@ -45,13 +46,10 @@ target_include_directories(${PROJECT_NAME}
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
 
-if(MSVC)
-    target_compile_options(${PROJECT_NAME} PRIVATE
-        "$<$<C_COMPILER_ID:MSVC>:/utf-8>"
-        "$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
+if(WIN32)
+    # export dll in windows
+    target_compile_definitions(${PROJECT_NAME} PRIVATE ZLIB_DLL)
 endif()
-
-target_compile_definitions(${PROJECT_NAME} PRIVATE ZLIB_DLL)
 
 if(ANDROID)
     # Install target
@@ -62,7 +60,7 @@ if(ANDROID)
         LIBRARY DESTINATION "libs/${ANDROID_ABI}"
         COMPONENT Runtime
         ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-        PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}
+        PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/RabbitVNC/${PROJECT_NAME}
         INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         )
 else()
@@ -75,7 +73,7 @@ else()
             LIBRARY DESTINATION "${CMAKE_INSTALL_BINDIR}"
             COMPONENT Runtime
             ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-            PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}
+            PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/RabbitVNC/${PROJECT_NAME}
             INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
             )
     else()
@@ -86,7 +84,7 @@ else()
             LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
             COMPONENT Runtime
             ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-            PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}
+            PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/RabbitVNC/${PROJECT_NAME}
             INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
             )
     endif()
@@ -97,14 +95,13 @@ export(TARGETS ${PROJECT_NAME}
     )
 # Install cmake configure files
 install(EXPORT ${PROJECT_NAME}Config
-    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/RabbitVNC"
+    NAMESPACE
+        RabbitVNC::
     )
 write_basic_package_version_file(
     "${CMAKE_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
     VERSION ${BUILD_VERSION}
     COMPATIBILITY AnyNewerVersion)
-install(FILES "${CMAKE_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake" DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake")
-
-if(UNIX)
-  libtool_create_control_file(rdr)
-endif()
+install(FILES "${CMAKE_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/RabbitVNC")

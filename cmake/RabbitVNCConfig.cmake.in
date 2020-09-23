@@ -1,0 +1,49 @@
+# - Try to find RabbitVNC
+#
+#  Usage from an external project:
+#    In your CMakeLists.txt, add these lines:
+#
+#    find_package(RabbitVNC)
+#    target_link_libraries(MY_TARGET_NAME ${RabbitVNC_LIBRARIES})
+#  
+#  This file will define the following variables:
+#    RabbitVNC_FOUND: True if find RabbitVNC, other false
+#    RabbitVNC_LIBRARIES:  The list of all imported targets for RabbitVNC components
+#
+# Author: Kang Lin <kl222@126.com>
+
+include(FindPackageHandleStandardArgs)
+
+if (NOT RabbitVNC_FIND_COMPONENTS)
+    set(RabbitVNC_FIND_COMPONENTS
+        @RabbitVNC_FIND_COMPONENTS@
+	)
+endif()
+
+get_filename_component(_RabbitVNC_module_paths "${CMAKE_CURRENT_LIST_DIR}" ABSOLUTE)
+
+set(_RabbitVNC_FIND_PARTS_REQUIRED)
+if (RabbitVNC_FIND_REQUIRED)
+    set(_RabbitVNC_FIND_PARTS_REQUIRED REQUIRED)
+endif()
+set(_RabbitVNC_FIND_PARTS_QUIET)
+if (RabbitVNC_FIND_QUIETLY)
+    set(_RabbitVNC_FIND_PARTS_QUIET QUIET)
+endif()
+
+foreach(module ${RabbitVNC_FIND_COMPONENTS})
+    find_package(${module}
+        ${_RabbitVNC_FIND_PARTS_QUIET}
+        ${_RabbitVNC_FIND_PARTS_REQUIRED}
+        PATHS ${_RabbitVNC_module_paths} NO_DEFAULT_PATH
+    )
+    if(${module}_FOUND)
+        list(APPEND RabbitVNC_LIBRARIES RabbitVNC::${module})
+    endif()
+    list(APPEND required "${module}_FOUND")  
+endforeach()
+
+# Run checks via find_package_handle_standard_args
+find_package_handle_standard_args(RabbitVNC
+	FOUND_VAR RabbitVNC_FOUND
+	REQUIRED_VARS ${required})

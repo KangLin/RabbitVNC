@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 2.8.12)
 
 if(POLICY CMP0083)
     cmake_policy(SET CMP0083 NEW)
@@ -11,6 +11,7 @@ endif()
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_VERBOSE_MAKEFILE ON CACHE BOOL "verbose")
 
 # Internal cmake modules
 set(CMAKE_MODULE_PATH
@@ -153,10 +154,6 @@ message(STATUS "CMAKE_BUILD_TYPE = ${CMAKE_BUILD_TYPE}")
 message(STATUS "VERSION = ${VERSION}")
 add_definitions(-DBUILD_TIMESTAMP="${BUILD_TIMESTAMP}")
 
-if(WIN32)
-  set(BUILD_WINVNC 1)
-endif()
-
 # Minimum version is Windows 2000 (5.0)
 if(WIN32)
   if(NOT CMAKE_SIZEOF_VOID_P MATCHES 8)
@@ -220,11 +217,14 @@ add_custom_target(install-runtime
 
 add_subdirectory(common)
 
-if(WIN32)
-  add_subdirectory(win)
-else()
-  # No interest in building x related parts on Apple
-  if(NOT APPLE)
-    add_subdirectory(unix)
-  endif()
+option(BUILD_APP "Build applications" ON)
+if(BUILD_APP)
+    if(WIN32)
+        add_subdirectory(win)
+    else()
+        # No interest in building x related parts on Apple
+        if(NOT APPLE)
+            add_subdirectory(unix)
+        endif()
+    endif()
 endif()

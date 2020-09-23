@@ -1,4 +1,5 @@
 project(Xregion)
+
 set(INSTALLHEADER_FILES region.h  Xregion.h)
 
 add_library(Xregion
@@ -11,12 +12,6 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
     PUBLIC_HEADER "${INSTALLHEADER_FILES}" # Install head files
     VERSION ${BUILD_VERSION})
-
-if(MSVC)
-    target_compile_options(${PROJECT_NAME} PRIVATE
-        "$<$<C_COMPILER_ID:MSVC>:/utf-8>"
-        "$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
-endif()
 
 GENERATE_EXPORT_HEADER(${PROJECT_NAME})
 string(TOLOWER ${PROJECT_NAME} LOWER_PROJECT_NAME)
@@ -34,7 +29,7 @@ if(ANDROID)
         LIBRARY DESTINATION "libs/${ANDROID_ABI}"
             COMPONENT Runtime
         ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-        PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}
+        PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/RabbitVNC/${PROJECT_NAME}
         INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         )
 else()
@@ -47,7 +42,7 @@ else()
             LIBRARY DESTINATION "${CMAKE_INSTALL_BINDIR}"
                 COMPONENT Runtime
             ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-            PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}
+            PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/RabbitVNC/${PROJECT_NAME}
             INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
             )
     else()
@@ -58,7 +53,7 @@ else()
             LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
                 COMPONENT Runtime
             ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-            PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}
+            PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/RabbitVNC/${PROJECT_NAME}
             INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
             )
     endif()
@@ -69,14 +64,14 @@ export(TARGETS ${PROJECT_NAME}
     )
 # Install cmake configure files
 install(EXPORT ${PROJECT_NAME}Config
-    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/RabbitVNC"
+    NAMESPACE
+        RabbitVNC::
     )
 write_basic_package_version_file(
     "${CMAKE_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
     VERSION ${BUILD_VERSION}
     COMPATIBILITY AnyNewerVersion)
-install(FILES "${CMAKE_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake" DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake")
+install(FILES "${CMAKE_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/RabbitVNC")
 
-if(UNIX)
-  libtool_create_control_file(${PROJECT_NAME})
-endif()

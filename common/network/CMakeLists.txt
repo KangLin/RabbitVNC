@@ -4,10 +4,6 @@ set(INSTALLHEADER_FILES Socket.h TcpSocket.h)
 
 add_library(${PROJECT_NAME} TcpSocket.cxx ${INSTALLHEADER_FILES})
 
-if(WIN32)
-	target_link_libraries(${PROJECT_NAME} PUBLIC ws2_32)
-endif()
-
 target_link_libraries(${PROJECT_NAME} PUBLIC rdr)
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
@@ -16,10 +12,6 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
     PUBLIC_HEADER "${INSTALLHEADER_FILES}" # Install head files
     VERSION ${BUILD_VERSION})
-
-# See: http://www.it1352.com/478094.html
-target_include_directories(${PROJECT_NAME} PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/common>)
 
 if(MSVC)
     target_compile_options(${PROJECT_NAME} PRIVATE
@@ -43,7 +35,7 @@ if(ANDROID)
         LIBRARY DESTINATION "libs/${ANDROID_ABI}"
             COMPONENT Runtime
         ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-        PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}
+        PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/RabbitVNC/${PROJECT_NAME}
         INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         )
 else()
@@ -56,7 +48,7 @@ else()
             LIBRARY DESTINATION "${CMAKE_INSTALL_BINDIR}"
                 COMPONENT Runtime
             ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-            PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}
+            PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/RabbitVNC/${PROJECT_NAME}
             INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
             )
     else()
@@ -67,7 +59,7 @@ else()
             LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
                 COMPONENT Runtime
             ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-            PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}
+            PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/RabbitVNC/${PROJECT_NAME}
             INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
             )
     endif()
@@ -78,14 +70,13 @@ export(TARGETS ${PROJECT_NAME}
     )
 # Install cmake configure files
 install(EXPORT ${PROJECT_NAME}Config
-    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/RabbitVNC"
+    NAMESPACE
+        RabbitVNC::
     )
 write_basic_package_version_file(
     "${CMAKE_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
     VERSION ${BUILD_VERSION}
     COMPATIBILITY AnyNewerVersion)
-install(FILES "${CMAKE_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake" DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake")
-
-if(UNIX)
-  libtool_create_control_file(${PROJECT_NAME})
-endif()
+install(FILES "${CMAKE_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/RabbitVNC")
