@@ -32,7 +32,11 @@ set(SOURCE_FILES
 
 add_library(rdr ${SOURCE_FILES}	${INSTALLHEADER_FILES})
 
-target_link_libraries(${PROJECT_NAME} PUBLIC z)
+if(TARGET zlib)
+    target_link_libraries(${PROJECT_NAME} PUBLIC zlib)
+else()
+    target_link_libraries(${PROJECT_NAME} PUBLIC z)
+endif()
 
 if(WIN32)
     target_link_libraries(${PROJECT_NAME} PUBLIC ws2_32)
