@@ -121,14 +121,14 @@ set(RCVERSION 0,1,00,0)
 
 # Minimum version is Windows 2000 (5.0)
 if(WIN32)
-  if(NOT CMAKE_SIZEOF_VOID_P MATCHES 8)
-    add_definitions(-D_WIN32_IE=0x0500 -D_WIN32_WINNT=0x0500)
-  else()
-    set(WIN64 1)
-    # Win64 doesn't like us requesting a Windows version that didn't have
-    # 64-bit support. Request XP (5.1) instead.
-    add_definitions(-D_WIN32_IE=0x0501 -D_WIN32_WINNT=0x0501)
-  endif()
+    if(NOT CMAKE_SIZEOF_VOID_P MATCHES 8)
+        add_definitions(-D_WIN32_IE=0x0500 -D_WIN32_WINNT=0x0500)
+    else()
+        set(WIN64 1)
+        # Win64 doesn't like us requesting a Windows version that didn't have
+        # 64-bit support. Request XP (5.1) instead.
+        add_definitions(-D_WIN32_IE=0x0501 -D_WIN32_WINNT=0x0501)
+    endif()
 endif()
 
 if(CMAKE_SIZEOF_VOID_P MATCHES 8)

@@ -1,7 +1,5 @@
 project(rfb_win32)
 
-include_directories(${CMAKE_SOURCE_DIR}/common)
-
 set(RFB_WIN32_SOURCES
     AboutDialog.cxx
     LaunchProcess.cxx
@@ -41,6 +39,58 @@ set(RFB_WIN32_SOURCES
     CleanDesktop.cxx
 )
 
+set(INSTALLHEADER_FILES
+    AboutDialog.h
+    IntervalTimer.h
+    Security.h
+    BitmapInfo.h
+    keymap.h
+    Service.h
+    CKeyboard.h
+    LaunchProcess.h
+    SInput.h
+    CleanDesktop.h
+    LocalMem.h
+    SocketManager.h
+    Clipboard.h
+    LogicalPalette.h
+    TCharArray.h
+    CompatibleBitmap.h
+    LowLevelKeyEvents.h
+    Threading.h
+    ComputerName.h
+    ModuleFileName.h
+    TrayIcon.h
+    CPointer.h
+    MonitorInfo.h
+    TsSessions.h
+    CurrentUser.h
+    MsgBox.h
+    Win32Util.h
+    DeviceContext.h
+    MsgWindow.h
+    WMCursor.h
+    DeviceFrameBuffer.h
+    OSVersion.h
+    WMHooks.h
+    Dialog.h
+    RegConfig.h
+    WMNotifier.h
+    DIBSectionBuffer.h
+    Registry.h
+    WMPoller.h
+    DynamicFn.h
+    SDisplay.h
+    WMShatter.h
+    EventManager.h
+    SDisplayCoreDriver.h
+    WMWindowCopyRect.h
+    Handle.h
+    SDisplayCorePolling.h
+    IconInfo.h
+    SDisplayCoreWMHooks.h
+    )
+
 add_library(${PROJECT_NAME} ${RFB_WIN32_SOURCES})
 
 target_link_libraries(${PROJECT_NAME} PUBLIC rfb user32.lib comctl32.lib version.lib)
@@ -60,7 +110,7 @@ target_include_directories(${PROJECT_NAME}
     )
 
 if(MSVC)
-    target_compile_options(${PROJECT_NAME} PRIVATE
+    target_compile_options(${PROJECT_NAME} PUBLIC
         "$<$<C_COMPILER_ID:MSVC>:/utf-8>"
         "$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
 endif()
