@@ -47,8 +47,9 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 
 # See: http://www.it1352.com/478094.html
 target_include_directories(${PROJECT_NAME}
-    PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
-    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/common>)
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/common>)
 
 if(MSVC)
     target_compile_options(${PROJECT_NAME} PRIVATE

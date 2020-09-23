@@ -9,7 +9,7 @@ if(POLICY CMP0020)
 endif()
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 98)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_VERBOSE_MAKEFILE ON CACHE BOOL "verbose")
 
@@ -55,13 +55,6 @@ ENDIF()
 message("BUILD_VERSION:${BUILD_VERSION}")
 set(VERSION ${BUILD_VERSION})
 
-if(NOT DEFINED CMAKE_BUILD_TYPE)
-	set(CMAKE_BUILD_TYPE "Release")
-endif(NOT DEFINED CMAKE_BUILD_TYPE)
-if("Debug" STREQUAL CMAKE_BUILD_TYPE)
-    add_definitions(-D_DEBUG)
-endif()
-
 IF(MSVC)
     # This option is to enable the /MP switch for Visual Studio 2005 and above compilers
     OPTION(WIN32_USE_MP "Set to ON to build with the /MP option (Visual Studio 2005 and above)." ON)
@@ -74,7 +67,7 @@ IF(MSVC)
     add_compile_options("$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
 ENDIF(MSVC)
 
-SET(BUILD_SHARED_LIBS ON CACHE BOOL "Build shared libs")
+SET(BUILD_SHARED_LIBS OFF CACHE BOOL "Build shared libs")
 if (BUILD_SHARED_LIBS)
     add_definitions(-DBUILD_SHARED_LIBS)
     if (CMAKE_COMPILER_IS_GNUCXX AND NOT MINGW)
@@ -87,6 +80,17 @@ if (BUILD_SHARED_LIBS)
 else(BUILD_SHARED_LIBS)
     add_definitions(-DQT_STATICPLUGIN)
 endif(BUILD_SHARED_LIBS)
+
+# Default to optimised builds instead of debug ones. Our code has no bugs ;)
+# (CMake makes it fairly easy to toggle this back to Debug if needed)
+if(NOT DEFINED CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE "Release")
+endif(NOT DEFINED CMAKE_BUILD_TYPE)
+if("Debug" STREQUAL CMAKE_BUILD_TYPE)
+    add_definitions(-D_DEBUG)
+endif()
+
+message(STATUS "CMAKE_BUILD_TYPE = ${CMAKE_BUILD_TYPE}")
 
 include(CMakePackageConfigHelpers)
 include(GNUInstallDirs)
@@ -101,16 +105,11 @@ include(CheckCXXSourceCompiles)
 include(CheckCSourceRuns)
 
 include(CMakeMacroLibtoolFile)
-SET(MAJOR_VERSION 0)
-SET(MINOR_VERSION 1)
-SET(PATCH_VERSION 00)
 
 project(RabbitVNC)
-set(VERSION ${MAJOR_VERSION}.${MINOR_VERSION}.${PATCH_VERSION})
+set(VERSION ${BUILD_VERSION})
 
-SET(CPACK_PACKAGE_VERSION_MAJOR "${MAJOR_VERSION}")
-SET(CPACK_PACKAGE_VERSION_MINOR "${MINOR_VERSION}")
-SET(CPACK_PACKAGE_VERSION_PATCH "${PATCH_VERSION}")
+SET(CPACK_PACKAGE_VERSION_MAJOR "${BUILD_VERSION}")
 SET(CPACK_PACKAGE_DESCRIPTION "Rabbit Vnc")
 SET(CPACK_PACKAGE_CONTACT "kl222@126.com")
 SET(CPACK_PACKAGE_VENDOR "KangLin studio")
@@ -119,40 +118,6 @@ include(CPack)
 
 # The RC version must always be four comma-separated numbers
 set(RCVERSION 0,1,00,0)
-
-# Installation paths
-set(BIN_DIR "${CMAKE_INSTALL_PREFIX}/bin")
-set(LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
-set(INCLUDE_DIR "${CMAKE_INSTALL_PREFIX}/include")
-set(DATA_DIR "${CMAKE_INSTALL_PREFIX}/share")
-set(MAN_DIR "${DATA_DIR}/man")
-set(LOCALE_DIR "${DATA_DIR}/locale")
-set(DOC_DIR "${CMAKE_INSTALL_PREFIX}/share/doc/${CMAKE_PROJECT_NAME}-${VERSION}")
-
-if(WIN32)
-  set(BIN_DIR "${CMAKE_INSTALL_PREFIX}")
-  set(DOC_DIR "${CMAKE_INSTALL_PREFIX}")
-endif()
-
-set(BUILD_TIMESTAMP "")
-execute_process(COMMAND "date" "+%Y-%m-%d %H:%M" OUTPUT_VARIABLE BUILD_TIMESTAMP)
-
-if(NOT BUILD_TIMESTAMP)
-  set(BUILD_TIMESTAMP "")
-else()
-  string(REGEX REPLACE "\n" "" BUILD_TIMESTAMP ${BUILD_TIMESTAMP})
-endif()
-
-# Default to optimised builds instead of debug ones. Our code has no bugs ;)
-# (CMake makes it fairly easy to toggle this back to Debug if needed)
-if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE Release)
-endif()
-
-message(STATUS "CMAKE_BUILD_TYPE = ${CMAKE_BUILD_TYPE}")
-
-message(STATUS "VERSION = ${VERSION}")
-add_definitions(-DBUILD_TIMESTAMP="${BUILD_TIMESTAMP}")
 
 # Minimum version is Windows 2000 (5.0)
 if(WIN32)
@@ -191,11 +156,6 @@ endif()
 if(WIN32)
   check_c_source_compiles("#include <windows.h>\n#include <wininet.h>\n#include <shlobj.h>\nint main(int c, char** v) {IActiveDesktop iad; return 0;}" HAVE_ACTIVE_DESKTOP_H)
   check_c_source_compiles("#include <windows.h>\n#include <wininet.h>\n#include <shlobj.h>\nint main(int c, char** v) {GUID i = CLSID_ActiveDesktop; return 0;}" HAVE_ACTIVE_DESKTOP_L)
-endif()
-
-# X11 stuff. It's in a if() so that we can say REQUIRED
-if(UNIX AND NOT (APPLE OR WIN32))
-  find_package(X11 REQUIRED)
 endif()
 
 # Check for socket functions

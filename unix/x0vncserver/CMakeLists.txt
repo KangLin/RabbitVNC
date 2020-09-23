@@ -1,33 +1,41 @@
-include_directories(${X11_INCLUDE_DIR})
-include_directories(${CMAKE_SOURCE_DIR}/unix/tx)
-include_directories(${CMAKE_SOURCE_DIR}/unix/vncconfig)
-include_directories(${CMAKE_SOURCE_DIR}/unix)
-include_directories(${CMAKE_SOURCE_DIR}/common)
+project(x0vncserver)
 
-add_executable(x0vncserver
+add_executable(${PROJECT_NAME}
   buildtime.c
   Image.cxx
   x0vncserver.cxx
   ../vncconfig/QueryConnectDialog.cxx
 )
 
-target_link_libraries(x0vncserver tx rfb network rdr)
+target_link_libraries(${PROJECT_NAME} PRIVATE tx network)
+target_include_directories(${PROJECT_NAME} PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/unix/vncconfig>)
 
 if(X11_FOUND AND X11_XTest_LIB)
-  add_definitions(-DHAVE_XTEST)
-  target_link_libraries(x0vncserver ${X11_XTest_LIB})
+  target_compile_definitions(${PROJECT_NAME} PRIVATE HAVE_XTEST)
+  target_link_libraries(${PROJECT_NAME} PRIVATE ${X11_XTest_LIB})
 else()
-  message(WARNING "No XTest extension.  x0vncserver will be view-only.")
+  message(WARNING "No XTest extension. x0vncserver will be view-only.")
 endif()
 
 if(X11_FOUND AND X11_Xdamage_LIB)
-  add_definitions(-DHAVE_XDAMAGE)
-  target_link_libraries(x0vncserver ${X11_Xdamage_LIB})
+  target_compile_definitions(${PROJECT_NAME} PRIVATE HAVE_XDAMAGE)
+  target_link_libraries(${PROJECT_NAME} PRIVATE ${X11_Xdamage_LIB})
 else()
   message(WARNING "No DAMAGE extension.  x0vncserver will have to use the slower polling method.")
 endif()
 
-target_link_libraries(x0vncserver ${X11_LIBRARIES})
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    VERSION ${BUILD_VERSION})
 
-install(TARGETS x0vncserver DESTINATION ${BIN_DIR})
-install(FILES x0vncserver.man DESTINATION ${MAN_DIR}/man1 RENAME x0vncserver.1)
+INSTALL(TARGETS ${PROJECT_NAME}
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+        COMPONENT Runtime
+    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+        COMPONENT Runtime
+    )
+
+install(FILES ${PROJECT_NAME}.man
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/man1 RENAME ${PROJECT_NAME}.1
+        COMPONENT Runtime)
