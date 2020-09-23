@@ -67,7 +67,7 @@ IF(MSVC)
     add_compile_options("$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
 ENDIF(MSVC)
 
-SET(BUILD_SHARED_LIBS OFF CACHE BOOL "Build shared libs")
+SET(BUILD_SHARED_LIBS ON CACHE BOOL "Build shared libs")
 if (BUILD_SHARED_LIBS)
     add_definitions(-DBUILD_SHARED_LIBS)
     if (CMAKE_COMPILER_IS_GNUCXX AND NOT MINGW)
