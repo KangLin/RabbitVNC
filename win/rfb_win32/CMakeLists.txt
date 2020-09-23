@@ -93,7 +93,7 @@ set(INSTALLHEADER_FILES
 
 add_library(${PROJECT_NAME} ${RFB_WIN32_SOURCES})
 
-target_link_libraries(${PROJECT_NAME} PUBLIC rfb user32.lib comctl32.lib version.lib)
+target_link_libraries(${PROJECT_NAME} PUBLIC rfb ws2_32.lib user32.lib comctl32.lib version.lib)
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
