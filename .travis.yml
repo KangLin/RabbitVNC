@@ -2,7 +2,7 @@ language: cpp
 
 os:
   - linux
-  - windows
+  #- windows
 
 cache: apt
 
