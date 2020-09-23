@@ -38,15 +38,12 @@ set(RFB_WIN32_SOURCES
     EventManager.cxx
     Service.cxx
     WMWindowCopyRect.cxx
+    CleanDesktop.cxx
 )
-
-if(BUILD_WINVNC)
-  set(RFB_WIN32_SOURCES ${RFB_WIN32_SOURCES} CleanDesktop.cxx)
-endif()
 
 add_library(${PROJECT_NAME} ${RFB_WIN32_SOURCES})
 
-target_link_libraries(${PROJECT_NAME} PUBLIC user32.lib comctl32.lib version.lib)
+target_link_libraries(${PROJECT_NAME} PUBLIC rfb user32.lib comctl32.lib version.lib)
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
@@ -58,7 +55,9 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 # See: http://www.it1352.com/478094.html
 target_include_directories(${PROJECT_NAME}
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/win>
+    )
 
 if(MSVC)
     target_compile_options(${PROJECT_NAME} PRIVATE
@@ -81,7 +80,7 @@ INSTALL(TARGETS ${PROJECT_NAME}
     LIBRARY DESTINATION "${CMAKE_INSTALL_BINDIR}"
     COMPONENT Runtime
     ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-    PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}
+    PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/RabbitVNC/${PROJECT_NAME}
     INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     )
 

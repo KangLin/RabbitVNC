@@ -45,7 +45,7 @@ target_include_directories(${PROJECT_NAME}
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
 
-if(WIN32)
+if(BUILD_SHARED_LIBS AND WIN32)
     # export dll in windows
     target_compile_definitions(${PROJECT_NAME} PRIVATE ZLIB_DLL)
 endif()
