@@ -30,7 +30,7 @@ set(HEAD_FILES
     UserPasswdDialog.h
     )
 
-add_executable(${PROJECT_NAME} ${HEAD_FILES} ${SOURCE_FILES} vncviewer.rc)
+add_executable(${PROJECT_NAME} WIN32 ${HEAD_FILES} ${SOURCE_FILES} vncviewer.rc)
 target_compile_definitions(${PROJECT_NAME} PRIVATE _WINDOWS WIN32)
 target_link_libraries(${PROJECT_NAME} PRIVATE rfb_win32 Xregion network)
 target_link_options(${PROJECT_NAME} PRIVATE "/SUBSYSTEM:WINDOWS")
