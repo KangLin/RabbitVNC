@@ -144,7 +144,7 @@ if(UNIX AND NOT APPLE)
 endif()
 
 # Check for gettext
-option(ENABLE_NLS "Enable translation of program messages" ON)
+option(ENABLE_NLS "Enable translation of program messages" OFF)
 if(ENABLE_NLS)
     # Tools
     find_package(Gettext)
@@ -227,7 +227,7 @@ if(BUILD_JAVA)
     add_subdirectory(java)
 endif()
 
-option(BUILD_VIEWER "Build RabbitVNC viewer" ON)
+option(BUILD_VIEWER "Build RabbitVNC viewer" OFF)
 if(BUILD_VIEWER)
 	# Check for FLTK
 	set(FLTK_SKIP_FLUID TRUE)
