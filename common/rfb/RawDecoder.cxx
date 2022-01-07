@@ -15,19 +15,17 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
  * USA.
  */
-#include <rdr/InStream.h>
-#include <rfb/CMsgReader.h>
-#include <rfb/CMsgHandler.h>
+
+#include <assert.h>
+
+#include <rdr/OutStream.h>
+#include <rfb/ServerParams.h>
+#include <rfb/PixelBuffer.h>
 #include <rfb/RawDecoder.h>
 
 using namespace rfb;
 
-Decoder* RawDecoder::create(CMsgReader* reader)
-{
-  return new RawDecoder(reader);
-}
-
-RawDecoder::RawDecoder(CMsgReader* reader_) : reader(reader_)
+RawDecoder::RawDecoder() : Decoder(DecoderPlain)
 {
 }
 
@@ -35,21 +33,19 @@ RawDecoder::~RawDecoder()
 {
 }
 
-void RawDecoder::readRect(const Rect& r, CMsgHandler* handler)
+bool RawDecoder::readRect(const Rect& r, rdr::InStream* is,
+                          const ServerParams& server, rdr::OutStream* os)
 {
-  int x = r.tl.x;
-  int y = r.tl.y;
-  int w = r.width();
-  int h = r.height();
-  int nPixels;
-  rdr::U8* imageBuf = reader->getImageBuf(w, w*h, &nPixels);
-  int bytesPerRow = w * (reader->bpp() / 8);
-  while (h > 0) {
-    int nRows = nPixels / w;
-    if (nRows > h) nRows = h;
-    reader->getInStream()->readBytes(imageBuf, nRows * bytesPerRow);
-    handler->imageRect(Rect(x, y, x+w, y+nRows), imageBuf);
-    h -= nRows;
-    y += nRows;
-  }
+  if (!is->hasData(r.area() * (server.pf().bpp/8)))
+    return false;
+  os->copyBytes(is, r.area() * (server.pf().bpp/8));
+  return true;
+}
+
+void RawDecoder::decodeRect(const Rect& r, const void* buffer,
+                            size_t buflen, const ServerParams& server,
+                            ModifiablePixelBuffer* pb)
+{
+  assert(buflen >= (size_t)r.area() * (server.pf().bpp/8));
+  pb->imageRect(server.pf(), r, buffer);
 }

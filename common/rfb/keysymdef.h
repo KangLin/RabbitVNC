@@ -44,6 +44,9 @@ SOFTWARE.
 
 ******************************************************************/
 
+#ifndef KEYSYMDEF_H
+#define KEYSYMDEF_H
+
 #define XK_VoidSymbol		0xFFFFFF	/* void symbol */
 
 #ifdef XK_MISCELLANY
@@ -175,7 +178,7 @@ SOFTWARE.
 
 
 /*
- * Auxilliary Functions; note the duplicate definitions for left and right
+ * Auxiliary Functions; note the duplicate definitions for left and right
  * function keys;  Sun keyboards and a few other manufactures have such
  * function key groups on the left and/or right sides of the keyboard.
  * We've not found a keyboard with more than 35 function keys total.
@@ -1593,3 +1596,5 @@ SOFTWARE.
 #define XK_DongSign					0x20ab
 #define XK_EuroSign					0x20ac
 #endif
+
+#endif /*KEYSYMDEF_H*/

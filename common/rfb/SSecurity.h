@@ -44,18 +44,17 @@
 #define __RFB_SSECURITY_H__
 
 #include <rdr/types.h>
+#include <rfb/SConnection.h>
 #include <rfb/util.h>
 #include <list>
 
 namespace rfb {
 
-  class SConnection;
-
   class SSecurity {
   public:
+    SSecurity(SConnection* sc_) : sc(sc_) {}
     virtual ~SSecurity() {}
-    virtual bool processMsg(SConnection* sc)=0;
-    virtual void destroy() { delete this; }
+    virtual bool processMsg() = 0;
     virtual int getType() const = 0;
 
     // getUserName() gets the name of the user attempting authentication.  The
@@ -63,21 +62,11 @@ namespace rfb {
     // necessary.  Null may be returned to indicate that there is no user name
     // for this security type.
     virtual const char* getUserName() const = 0;
-  };
 
-  // SSecurityFactory creates new SSecurity instances for
-  // particular security types.
-  // The instances must be destroyed by calling destroy()
-  // on them when done.
-  // getSecTypes returns a list of the security types that are both configured
-  // and actually supported.  Which configuration is considered depends on the
-  // reverseConnection parameter.
-  class SSecurityFactory {
-  public:
-    virtual ~SSecurityFactory() {}
-    virtual SSecurity* getSSecurity(rdr::U8 secType, bool noAuth=false)=0;
-    virtual void getSecTypes(std::list<rdr::U8>* secTypes,
-                             bool reverseConnection) = 0;
+    virtual SConnection::AccessRights getAccessRights() const { return SConnection::AccessDefault; }
+
+  protected:
+    SConnection* sc;
   };
 
 }

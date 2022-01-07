@@ -26,6 +26,9 @@
 // VK_SPACE (note that things like VK_ADD are for the plus key on the keypad,
 // not on the main keyboard).
 
+#ifndef KEYMAP_H
+#define KEYMAP_H
+
 struct keymap_t {
   rdr::U32 keysym;
   rdr::U8 vk;
@@ -62,7 +65,7 @@ static keymap_t keymap[] = {
   { XK_Help,             VK_HELP, 0 },
   { XK_Break,            VK_CANCEL, 1 },
 
-  // Auxilliary Functions - must come before XK_KP_F1, etc
+  // Auxiliary Functions - must come before XK_KP_F1, etc
 
   { XK_F1,               VK_F1, 0 },
   { XK_F2,               VK_F2, 0 },
@@ -134,6 +137,8 @@ static keymap_t keymap[] = {
   { XK_Control_R,        VK_CONTROL, 1 },
   { XK_Alt_L,            VK_MENU, 0 },
   { XK_Alt_R,            VK_MENU, 1 },
+  { XK_Meta_L,           VK_MENU, 0 },
+  { XK_Meta_R,           VK_MENU, 1 },
 
   // Left & Right Windows keys & Windows Menu Key
 
@@ -147,3 +152,5 @@ static keymap_t keymap[] = {
   { XK_Kana_Shift,       VK_KANA, 0 },
 
 };
+
+#endif /*KEYMAP_H*/

@@ -24,12 +24,13 @@ namespace rfb {
 
   class HextileDecoder : public Decoder {
   public:
-    static Decoder* create(CMsgReader* reader);
-    virtual void readRect(const Rect& r, CMsgHandler* handler);
+    HextileDecoder();
     virtual ~HextileDecoder();
-  private:
-    HextileDecoder(CMsgReader* reader);
-    CMsgReader* reader;
+    virtual bool readRect(const Rect& r, rdr::InStream* is,
+                          const ServerParams& server, rdr::OutStream* os);
+    virtual void decodeRect(const Rect& r, const void* buffer,
+                            size_t buflen, const ServerParams& server,
+                            ModifiablePixelBuffer* pb);
   };
 }
 #endif

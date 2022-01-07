@@ -1,4 +1,5 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
+ * Copyright 2014 Pierre Ossman for Cendio AB
  * 
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,12 +25,13 @@ namespace rfb {
 
   class RawEncoder : public Encoder {
   public:
-    static Encoder* create(SMsgWriter* writer);
-    virtual bool writeRect(const Rect& r, ImageGetter* ig, Rect* actual);
+    RawEncoder(SConnection* conn);
     virtual ~RawEncoder();
-  private:
-    RawEncoder(SMsgWriter* writer);
-    SMsgWriter* writer;
+    virtual bool isSupported();
+    virtual void writeRect(const PixelBuffer* pb, const Palette& palette);
+    virtual void writeSolidRect(int width, int height,
+                                const PixelFormat& pf,
+                                const rdr::U8* colour);
   };
 }
 #endif

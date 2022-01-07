@@ -1,4 +1,5 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
+ * Copyright 2009-2019 Pierre Ossman for Cendio AB
  * 
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,16 +17,17 @@
  * USA.
  */
 //
-// CMsgReader - class for reading RFB messages on the client side
-// (i.e. messages from server to client).
+// CMsgReader - class for reading RFB messages on the server side
+// (i.e. messages from client to server).
 //
 
 #ifndef __RFB_CMSGREADER_H__
 #define __RFB_CMSGREADER_H__
 
 #include <rdr/types.h>
+
+#include <rfb/Rect.h>
 #include <rfb/encodings.h>
-#include <rfb/Decoder.h>
 
 namespace rdr { class InStream; }
 
@@ -35,39 +37,60 @@ namespace rfb {
 
   class CMsgReader {
   public:
+    CMsgReader(CMsgHandler* handler, rdr::InStream* is);
     virtual ~CMsgReader();
 
-    virtual void readServerInit()=0;
+    bool readServerInit();
 
     // readMsg() reads a message, calling the handler as appropriate.
-    virtual void readMsg()=0;
+    bool readMsg();
 
     rdr::InStream* getInStream() { return is; }
-    rdr::U8* getImageBuf(int required, int requested=0, int* nPixels=0);
-    int bpp();
 
     int imageBufIdealSize;
 
   protected:
-    virtual void readSetColourMapEntries();
-    virtual void readBell();
-    virtual void readServerCutText();
+    bool readSetColourMapEntries();
+    bool readBell();
+    bool readServerCutText();
+    bool readExtendedClipboard(rdr::S32 len);
+    bool readFence();
+    bool readEndOfContinuousUpdates();
 
-    virtual void readFramebufferUpdateStart();
-    virtual void readFramebufferUpdateEnd();
-    virtual void readRect(const Rect& r, unsigned int encoding);
+    bool readFramebufferUpdate();
 
-    virtual void readCopyRect(const Rect& r);
+    bool readRect(const Rect& r, int encoding);
 
-    virtual void readSetCursor(int width, int height, const Point& hotspot);
+    bool readSetXCursor(int width, int height, const Point& hotspot);
+    bool readSetCursor(int width, int height, const Point& hotspot);
+    bool readSetCursorWithAlpha(int width, int height, const Point& hotspot);
+    bool readSetVMwareCursor(int width, int height, const Point& hotspot);
+    bool readSetDesktopName(int x, int y, int w, int h);
+    bool readExtendedDesktopSize(int x, int y, int w, int h);
+    bool readLEDState();
+    bool readVMwareLEDState();
 
-    CMsgReader(CMsgHandler* handler, rdr::InStream* is);
-
+  private:
     CMsgHandler* handler;
     rdr::InStream* is;
-    Decoder* decoders[encodingMax+1];
-    rdr::U8* imageBuf;
-    int imageBufSize;
+
+    enum stateEnum {
+      MSGSTATE_IDLE,
+      MSGSTATE_MESSAGE,
+      MSGSTATE_RECT_HEADER,
+      MSGSTATE_RECT_DATA,
+    };
+
+    stateEnum state;
+
+    rdr::U8 currentMsgType;
+    int nUpdateRectsLeft;
+    Rect dataRect;
+    int rectEncoding;
+
+    int cursorEncoding;
+
+    static const int maxCursorSize = 256;
   };
 }
 #endif

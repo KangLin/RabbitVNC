@@ -1,124 +1,63 @@
-project(rdr)
+# Check for zlib
+find_package(ZLIB REQUIRED)
 
-set(INSTALLHEADER_FILES
-    Exception.h
-    HexInStream.h
-    MemOutStream.h
-    types.h
-    FdInStream.h
-    HexOutStream.h
-    OutStream.h
-    ZlibInStream.h
-    FdOutStream.h
-    InStream.h
-    RandomStream.h
-    ZlibOutStream.h
-    FixedMemOutStream.h
-    MemInStream.h
-    SubstitutingInStream.h
+set(RabbitVNC_INCLUDE_DIR ${RabbitVNC_INCLUDE_DIR}
+    ${ZLIB_INCLUDE_DIRS}
+    PARENT_SCOPE)
+
+set(RabbitVNC_SOURCES ${RabbitVNC_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/Exception.cxx
+    ${CMAKE_CURRENT_SOURCE_DIR}/FdInStream.cxx
+    ${CMAKE_CURRENT_SOURCE_DIR}/FdOutStream.cxx
+    ${CMAKE_CURRENT_SOURCE_DIR}/FileInStream.cxx
+    ${CMAKE_CURRENT_SOURCE_DIR}/HexInStream.cxx
+    ${CMAKE_CURRENT_SOURCE_DIR}/HexOutStream.cxx
+    ${CMAKE_CURRENT_SOURCE_DIR}/BufferedInStream.cxx
+    ${CMAKE_CURRENT_SOURCE_DIR}/BufferedOutStream.cxx    
+    ${CMAKE_CURRENT_SOURCE_DIR}/RandomStream.cxx
+    ${CMAKE_CURRENT_SOURCE_DIR}/TLSException.cxx
+    ${CMAKE_CURRENT_SOURCE_DIR}/TLSInStream.cxx
+    ${CMAKE_CURRENT_SOURCE_DIR}/TLSOutStream.cxx
+    ${CMAKE_CURRENT_SOURCE_DIR}/ZlibInStream.cxx
+    ${CMAKE_CURRENT_SOURCE_DIR}/ZlibOutStream.cxx
+    PARENT_SCOPE)
+
+set(RDR_HEADS
+    ${CMAKE_CURRENT_SOURCE_DIR}/Exception.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/FdInStream.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/FdOutStream.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/FileInStream.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/HexInStream.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/HexOutStream.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/InStream.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/BufferedInStream.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/BufferedOutStream.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/OutStream.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/RandomStream.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/TLSException.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/TLSInStream.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/TLSOutStream.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/ZlibInStream.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/ZlibOutStream.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/types.h
     )
 
-set(SOURCE_FILES
-    Exception.cxx 
-    FdInStream.cxx 
-    FdOutStream.cxx
-    HexInStream.cxx
-    HexOutStream.cxx
-    InStream.cxx
-    RandomStream.cxx
-    ZlibInStream.cxx
-    ZlibOutStream.cxx
-    )
-
-add_library(rdr ${SOURCE_FILES}	${INSTALLHEADER_FILES})
-
-if(TARGET zlib)
-    target_link_libraries(${PROJECT_NAME} PUBLIC zlib)
-else()
-    target_link_libraries(${PROJECT_NAME} PUBLIC z)
+set(RDR_LIBRARIES ${ZLIB_LIBRARIES})
+if(GNUTLS_FOUND)
+    set(RDR_LIBRARIES ${RDR_LIBRARIES} ${GNUTLS_LIBRARIES})
 endif()
-
 if(WIN32)
-    target_link_libraries(${PROJECT_NAME} PUBLIC ws2_32)
+    set(RDR_LIBRARIES ${RDR_LIBRARIES} ws2_32)
 endif()
 
-set_target_properties(${PROJECT_NAME} PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
-    PUBLIC_HEADER "${INSTALLHEADER_FILES}" # Install head files
-    VERSION ${BUILD_VERSION})
+set(RabbitVNC_HEADS ${RabbitVNC_HEADS}
+    ${RDR_HEADS}
+    PARENT_SCOPE)
 
-# See: http://www.it1352.com/478094.html
-target_include_directories(${PROJECT_NAME}
-    PUBLIC
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
-        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/common>)
+set(RabbitVNC_LIBS ${RabbitVNC_LIBS}
+    ${RDR_LIBRARIES}
+    PARENT_SCOPE)
 
-if(MSVC)
-    target_compile_options(${PROJECT_NAME} PRIVATE
-        "$<$<C_COMPILER_ID:MSVC>:/utf-8>"
-        "$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
-endif()
-
-GENERATE_EXPORT_HEADER(${PROJECT_NAME})
-string(TOLOWER ${PROJECT_NAME} LOWER_PROJECT_NAME)
-set(INSTALLHEADER_FILES ${INSTALLHEADER_FILES} 
-    ${CMAKE_CURRENT_BINARY_DIR}/${LOWER_PROJECT_NAME}_export.h)
-file(COPY ${CMAKE_CURRENT_BINARY_DIR}/${LOWER_PROJECT_NAME}_export.h
-    DESTINATION ${CMAKE_BINARY_DIR})
-
-if(ANDROID)
-    # Install target
-    INSTALL(TARGETS ${PROJECT_NAME}
-        EXPORT ${PROJECT_NAME}Config
-        RUNTIME DESTINATION "libs/${ANDROID_ABI}"
-        COMPONENT Runtime
-        LIBRARY DESTINATION "libs/${ANDROID_ABI}"
-        COMPONENT Runtime
-        ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-        PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/RabbitVNC/${PROJECT_NAME}
-        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/RabbitVNC
-        )
-else()
-    # Install target
-    if(WIN32)
-        INSTALL(TARGETS ${PROJECT_NAME}
-            EXPORT ${PROJECT_NAME}Config
-            RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
-            COMPONENT Runtime
-            LIBRARY DESTINATION "${CMAKE_INSTALL_BINDIR}"
-            COMPONENT Runtime
-            ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-            PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/RabbitVNC/${PROJECT_NAME}
-            INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/RabbitVNC
-            )
-    else()
-        INSTALL(TARGETS ${PROJECT_NAME}
-            EXPORT ${PROJECT_NAME}Config
-            RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
-            COMPONENT Runtime
-            LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-            COMPONENT Runtime
-            ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-            PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/RabbitVNC/${PROJECT_NAME}
-            INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/RabbitVNC
-            )
-    endif()
-endif()
-
-export(TARGETS ${PROJECT_NAME}
-    APPEND FILE ${CMAKE_BINARY_DIR}/${PROJECT_NAME}Config.cmake
+INSTALL(FILES ${RDR_HEADS}
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}/rdr
     )
-# Install cmake configure files
-install(EXPORT ${PROJECT_NAME}Config
-    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/RabbitVNC"
-    NAMESPACE
-        RabbitVNC::
-    )
-write_basic_package_version_file(
-    "${CMAKE_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
-    VERSION ${BUILD_VERSION}
-    COMPATIBILITY AnyNewerVersion)
-install(FILES "${CMAKE_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
-    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/RabbitVNC")

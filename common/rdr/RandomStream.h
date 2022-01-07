@@ -20,10 +20,11 @@
 #define __RDR_RANDOMSTREAM_H__
 
 #include <stdio.h>
-#include <rdr/InStream.h>
+#include <rdr/BufferedInStream.h>
+
+#include <os/os.h>
 
 #ifdef WIN32
-#include <windows.h>
 #include <wincrypt.h>
 #ifdef WINCRYPT32API
 #define RFB_HAVE_WINCRYPT
@@ -32,22 +33,17 @@
 
 namespace rdr {
 
-  class RandomStream : public InStream {
+  class RandomStream : public BufferedInStream {
 
   public:
 
     RandomStream();
     virtual ~RandomStream();
 
-    int pos();
-
-  protected:
-    int overrun(int itemSize, int nItems, bool wait);
+  private:
+    virtual bool fillBuffer(size_t maxSize);
 
   private:
-    U8* start;
-    int offset;
-
     static unsigned int seed;
 #ifdef RFB_HAVE_WINCRYPT
     HCRYPTPROV provider;

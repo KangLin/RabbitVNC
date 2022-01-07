@@ -1,4 +1,5 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
+ * Copyright 2014 Pierre Ossman for Cendio AB
  * 
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,29 +27,55 @@ namespace rfb {
 
   class ZRLEEncoder : public Encoder {
   public:
-    static Encoder* create(SMsgWriter* writer);
-    virtual bool writeRect(const Rect& r, ImageGetter* ig, Rect* actual);
+    ZRLEEncoder(SConnection* conn);
     virtual ~ZRLEEncoder();
 
-    // setMaxLen() sets the maximum size in bytes of any ZRLE rectangle.  This
-    // can be used to stop the MemOutStream from growing too large.  The value
-    // must be large enough to allow for at least one row of ZRLE tiles.  So
-    // for example for a screen width of 2048 32-bit pixels this is 2K*4*64 =
-    // 512Kbytes plus a bit of overhead (the overhead is about 1/16 of the
-    // width, in this example about 128 bytes).
-    static void setMaxLen(int m) { maxLen = m; }
+    virtual bool isSupported();
 
-    // setSharedMos() sets a MemOutStream to be shared amongst all
-    // ZRLEEncoders.  Should be called before any ZRLEEncoders are created.
-    static void setSharedMos(rdr::MemOutStream* mos_) { sharedMos = mos_; }
+    virtual void writeRect(const PixelBuffer* pb, const Palette& palette);
+    virtual void writeSolidRect(int width, int height,
+                                const PixelFormat& pf,
+                                const rdr::U8* colour);
 
-  private:
-    ZRLEEncoder(SMsgWriter* writer);
-    SMsgWriter* writer;
+  protected:
+    void writePaletteTile(const Rect& tile, const PixelBuffer* pb,
+                          const Palette& palette);
+    void writePaletteRLETile(const Rect& tile, const PixelBuffer* pb,
+                             const Palette& palette);
+    void writeRawTile(const Rect& tile, const PixelBuffer* pb,
+                      const Palette& palette);
+
+    void writePalette(const PixelFormat& pf, const Palette& palette);
+
+    void writePixels(const rdr::U8* buffer, const PixelFormat& pf,
+                     unsigned int count);
+
+  protected:
+    // Preprocessor generated, optimised methods
+
+    void writePaletteTile(int width, int height,
+                          const rdr::U8* buffer, int stride,
+                          const PixelFormat& pf, const Palette& palette);
+    void writePaletteTile(int width, int height,
+                          const rdr::U16* buffer, int stride,
+                          const PixelFormat& pf, const Palette& palette);
+    void writePaletteTile(int width, int height,
+                          const rdr::U32* buffer, int stride,
+                          const PixelFormat& pf, const Palette& palette);
+
+    void writePaletteRLETile(int width, int height,
+                             const rdr::U8* buffer, int stride,
+                             const PixelFormat& pf, const Palette& palette);
+    void writePaletteRLETile(int width, int height,
+                             const rdr::U16* buffer, int stride,
+                             const PixelFormat& pf, const Palette& palette);
+    void writePaletteRLETile(int width, int height,
+                             const rdr::U32* buffer, int stride,
+                             const PixelFormat& pf, const Palette& palette);
+
+  protected:
     rdr::ZlibOutStream zos;
-    rdr::MemOutStream* mos;
-    static rdr::MemOutStream* sharedMos;
-    static int maxLen;
+    rdr::MemOutStream mos;
   };
 }
 #endif

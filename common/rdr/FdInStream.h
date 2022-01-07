@@ -23,53 +23,26 @@
 #ifndef __RDR_FDINSTREAM_H__
 #define __RDR_FDINSTREAM_H__
 
-#include <rdr/InStream.h>
+#include <rdr/BufferedInStream.h>
 
 namespace rdr {
 
-  class FdInStreamBlockCallback {
-  public:
-    virtual void blockCallback() = 0;
-  };
-
-  class FdInStream : public InStream {
+  class FdInStream : public BufferedInStream {
 
   public:
 
-    FdInStream(int fd, int timeoutms=-1, int bufSize=0,
-               bool closeWhenDone_=false);
-    FdInStream(int fd, FdInStreamBlockCallback* blockCallback, int bufSize=0);
+    FdInStream(int fd, bool closeWhenDone_=false);
     virtual ~FdInStream();
 
-    void setTimeout(int timeoutms);
-    void setBlockCallback(FdInStreamBlockCallback* blockCallback);
     int getFd() { return fd; }
-    int pos();
-    void readBytes(void* data, int length);
-
-    void startTiming();
-    void stopTiming();
-    unsigned int kbitsPerSecond();
-    unsigned int timeWaited() { return timeWaitedIn100us; }
-
-  protected:
-    int overrun(int itemSize, int nItems, bool wait);
 
   private:
-    int readWithTimeoutOrCallback(void* buf, int len, bool wait=true);
+    virtual bool fillBuffer(size_t maxSize);
+
+    size_t readFd(void* buf, size_t len);
 
     int fd;
     bool closeWhenDone;
-    int timeoutms;
-    FdInStreamBlockCallback* blockCallback;
-
-    bool timing;
-    unsigned int timeWaitedIn100us;
-    unsigned int timedKbits;
-
-    int bufSize;
-    int offset;
-    U8* start;
   };
 
 } // end of namespace rdr

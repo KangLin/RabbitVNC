@@ -33,8 +33,11 @@ namespace rfb {
   public:
 
     static IntParameter idleTimeout;
-    static IntParameter clientWaitTimeMillis;
-    static BoolParameter compareFB;
+    static IntParameter maxDisconnectionTime;
+    static IntParameter maxConnectionTime;
+    static IntParameter maxIdleTime;
+    static IntParameter compareFB;
+    static IntParameter frameRate;
     static BoolParameter protocol3_3;
     static BoolParameter alwaysShared;
     static BoolParameter neverShared;
@@ -43,6 +46,7 @@ namespace rfb {
     static BoolParameter acceptPointerEvents;
     static BoolParameter acceptCutText;
     static BoolParameter sendCutText;
+    static BoolParameter acceptSetDesktopSize;
     static BoolParameter queryConnect;
 
   };

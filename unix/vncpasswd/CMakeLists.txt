@@ -1,22 +1,9 @@
-project(vncpasswd)
+include_directories(${CMAKE_SOURCE_DIR}/common)
 
-add_executable(${PROJECT_NAME} 
-  vncpasswd.cxx)
+add_executable(vncpasswd 
+    vncpasswd.cxx)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE tx)
+target_link_libraries(vncpasswd tx RabbitVNC)
 
-set_target_properties(${PROJECT_NAME} PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    VERSION ${BUILD_VERSION})
-
-INSTALL(TARGETS ${PROJECT_NAME}
-    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
-        COMPONENT Runtime
-    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-        COMPONENT Runtime
-    )
-
-install(FILES ${PROJECT_NAME}.man
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/man1 RENAME ${PROJECT_NAME}.1
-        COMPONENT Runtime)
+install(TARGETS vncpasswd DESTINATION ${CMAKE_INSTALL_FULL_BINDIR})
+install(FILES vncpasswd.man DESTINATION ${CMAKE_INSTALL_FULL_MANDIR}/man1 RENAME vncpasswd.1)

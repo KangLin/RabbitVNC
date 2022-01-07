@@ -22,13 +22,15 @@
 #ifndef __CSECURITYNONE_H__
 #define __CSECURITYNONE_H__
 
+#include <rfb/Security.h>
 #include <rfb/CSecurity.h>
 
 namespace rfb {
 
   class CSecurityNone : public CSecurity {
   public:
-    virtual bool processMsg(CConnection* cc) { return true; }
+    CSecurityNone(CConnection* cc) : CSecurity(cc) {}
+    virtual bool processMsg() { return true; }
     virtual int getType() const {return secTypeNone;}
     virtual const char* description() const {return "No Encryption";}
   };

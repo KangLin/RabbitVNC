@@ -19,7 +19,6 @@
 // -=- Security.cxx
 
 #include <rfb_win32/Security.h>
-#include <rfb_win32/DynamicFn.h>
 #include <rfb/LogWriter.h>
 
 #include <lmcons.h>
@@ -112,7 +111,7 @@ void Sid::getUserNameAndDomain(TCHAR** name, TCHAR** domain) {
   LookupAccountSid(0, (PSID)buf, 0, &nameLen, 0, &domainLen, &use);
   if (GetLastError() != ERROR_INSUFFICIENT_BUFFER)
     throw rdr::SystemException("Unable to determine SID name lengths", GetLastError());
-  vlog.info("nameLen=%d, domainLen=%d, use=%d", nameLen, domainLen, use);
+  vlog.info("nameLen=%lu, domainLen=%lu, use=%d", nameLen, domainLen, use);
   *name = new TCHAR[nameLen];
   *domain = new TCHAR[domainLen];
   if (!LookupAccountSid(0, (PSID)buf, *name, &nameLen, *domain, &domainLen, &use))
@@ -122,7 +121,7 @@ void Sid::getUserNameAndDomain(TCHAR** name, TCHAR** domain) {
 
 Sid::Administrators::Administrators() {
   PSID sid = 0;
-  SID_IDENTIFIER_AUTHORITY ntAuth = SECURITY_NT_AUTHORITY;
+  SID_IDENTIFIER_AUTHORITY ntAuth = { SECURITY_NT_AUTHORITY };
   if (!AllocateAndInitializeSid(&ntAuth, 2,
                                 SECURITY_BUILTIN_DOMAIN_RID,
                                 DOMAIN_ALIAS_RID_ADMINS,
@@ -134,7 +133,7 @@ Sid::Administrators::Administrators() {
 
 Sid::SYSTEM::SYSTEM() {
   PSID sid = 0;
-  SID_IDENTIFIER_AUTHORITY ntAuth = SECURITY_NT_AUTHORITY;
+  SID_IDENTIFIER_AUTHORITY ntAuth = { SECURITY_NT_AUTHORITY };
   if (!AllocateAndInitializeSid(&ntAuth, 1,
                                 SECURITY_LOCAL_SYSTEM_RID,
                                 0, 0, 0, 0, 0, 0, 0, &sid))
@@ -155,18 +154,9 @@ Sid::FromToken::FromToken(HANDLE h) {
 
 
 PACL rfb::win32::CreateACL(const AccessEntries& ae, PACL existing_acl) {
-  typedef DWORD (WINAPI *_SetEntriesInAcl_proto) (ULONG, PEXPLICIT_ACCESS, PACL, PACL*);
-#ifdef UNICODE
-  const char* fnName = "SetEntriesInAclW";
-#else
-  const char* fnName = "SetEntriesInAclA";
-#endif
-  DynamicFn<_SetEntriesInAcl_proto> _SetEntriesInAcl(_T("advapi32.dll"), fnName);
-  if (!_SetEntriesInAcl.isValid())
-    throw rdr::SystemException("CreateACL failed; no SetEntriesInAcl", ERROR_CALL_NOT_IMPLEMENTED);
   PACL new_dacl;
   DWORD result;
-  if ((result = (*_SetEntriesInAcl)(ae.entry_count, ae.entries, existing_acl, &new_dacl)) != ERROR_SUCCESS)
+  if ((result = SetEntriesInAcl(ae.entry_count, ae.entries, existing_acl, &new_dacl)) != ERROR_SUCCESS)
     throw rdr::SystemException("SetEntriesInAcl", result);
   return new_dacl;
 }
@@ -186,7 +176,7 @@ PSECURITY_DESCRIPTOR rfb::win32::CreateSdWithDacl(const PACL dacl) {
     throw rdr::SystemException("SetSecurityDescriptorDacl", GetLastError());
   DWORD sdSize = GetSecurityDescriptorLength(&absSD);
   SecurityDescriptorPtr sd(sdSize);
-  if (!MakeSelfRelativeSD(&absSD, sd, &sdSize))
+  if (!MakeSelfRelativeSD(&absSD, (PSECURITY_DESCRIPTOR)sd.ptr, &sdSize))
     throw rdr::SystemException("MakeSelfRelativeSD", GetLastError());
   return sd.takeSD();
 }

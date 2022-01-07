@@ -1,4 +1,5 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
+ * Copyright 2011 Pierre Ossman for Cendio AB
  * 
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,32 +24,30 @@
 #ifndef __RDR_FDOUTSTREAM_H__
 #define __RDR_FDOUTSTREAM_H__
 
-#include <rdr/OutStream.h>
+#include <os/os.h>
+
+#include <rdr/BufferedOutStream.h>
 
 namespace rdr {
 
-  class FdOutStream : public OutStream {
+  class FdOutStream : public BufferedOutStream {
 
   public:
 
-    FdOutStream(int fd, int timeoutms=-1, int bufSize=0);
+    FdOutStream(int fd);
     virtual ~FdOutStream();
 
-    void setTimeout(int timeoutms);
     int getFd() { return fd; }
 
-    void flush();
-    int length();
-    void writeBytes(const void* data, int length);
+    unsigned getIdleTime();
+
+    virtual void cork(bool enable);
 
   private:
-    int overrun(int itemSize, int nItems);
-    int writeWithTimeout(const void* data, int length);
+    virtual bool flushBuffer();
+    size_t writeFd(const void* data, size_t length);
     int fd;
-    int timeoutms;
-    int bufSize;
-    int offset;
-    U8* start;
+    struct timeval lastWrite;
   };
 
 }

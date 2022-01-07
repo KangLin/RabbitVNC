@@ -16,26 +16,20 @@
  * USA.
  */
 
-#include <windows.h>
-#include <commctrl.h>
-#include <string.h>
-#ifdef WIN32
-#define strcasecmp _stricmp
-#endif
-
-#include "resource.h"
 #include <rfb/Logger_stdio.h>
 #include <rfb/LogWriter.h>
-#include <rfb/SSecurityFactoryStandard.h>
 #include <rfb_win32/Dialog.h>
 #include <rfb_win32/RegConfig.h>
 #include <rfb_win32/CurrentUser.h>
+
+#include <commctrl.h>
+#include <string.h>
+#include "resource.h"
 
 using namespace rfb;
 using namespace rfb::win32;
 
 static LogWriter vlog("main");
-
 
 #include <vncconfig/Authentication.h>
 #include <vncconfig/Connections.h>
@@ -46,7 +40,7 @@ static LogWriter vlog("main");
 #include <vncconfig/Desktop.h>
 
 
-TStr rfb::win32::AppName("VNC Config");
+TStr rfb::win32::AppName("TigerVNC Configuration");
 
 
 #ifdef _DEBUG
@@ -94,6 +88,8 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, char* cmdLine, int cmdShow) {
   vlog.info("Starting vncconfig applet");
 #endif
 
+  Configuration::enableServerParams();
+
   try {
     try {
       // Process command-line args
@@ -110,7 +106,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, char* cmdLine, int cmdShow) {
 
       // Create the required configuration registry key
       RegKey rootKey;
-      rootKey.createKey(configKey, _T("Software\\RealVNC\\WinVNC4"));
+      rootKey.createKey(configKey, _T("Software\\TigerVNC\\WinVNC4"));
   
       // Override whatever security it already had (NT only)
       bool warnOnChangePassword = false;
@@ -136,7 +132,6 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, char* cmdLine, int cmdShow) {
         } else if (e.err != ERROR_CALL_NOT_IMPLEMENTED &&
                    e.err != ERROR_NOT_LOGGED_ON) {
           // If the call is not implemented, ignore the error and continue
-          // If we are on Win9x and no user is logged on, ignore error and continue
           throw;
         }
         warnOnChangePassword = true;
@@ -144,11 +139,11 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, char* cmdLine, int cmdShow) {
 
       // Start a RegConfig thread, to load in existing settings
       RegConfigThread config;
-      config.start(configKey, _T("Software\\RealVNC\\WinVNC4"));
+      config.start(configKey, _T("Software\\TigerVNC\\WinVNC4"));
 
       // Build the dialog
       std::list<PropSheetPage*> pages;
-      AuthenticationPage auth(rootKey); pages.push_back(&auth);
+      SecPage auth(rootKey); pages.push_back(&auth);
       auth.setWarnPasswdInsecure(warnOnChangePassword);
       ConnectionsPage conn(rootKey); pages.push_back(&conn);
       InputsPage inputs(rootKey); pages.push_back(&inputs);
@@ -161,7 +156,7 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, char* cmdLine, int cmdShow) {
       HICON icon = (HICON)LoadImage(inst, MAKEINTRESOURCE(IDI_ICON), IMAGE_ICON, 0, 0, LR_SHARED);
 
       // Create the PropertySheet handler
-      TCHAR* propSheetTitle = _T("VNC Server Properties (Service-Mode)");
+      const TCHAR* propSheetTitle = _T("VNC Server Properties (Service-Mode)");
       if (configKey == HKEY_CURRENT_USER)
         propSheetTitle = _T("VNC Server Properties (User-Mode)");
       PropSheet sheet(inst, propSheetTitle, pages, icon);

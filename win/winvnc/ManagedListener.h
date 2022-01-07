@@ -19,7 +19,6 @@
 #ifndef __VNCSERVER_MANAGED_LISTENER_H__
 #define __VNCSERVER_MANAGED_LISTENER_H__
 
-//#include <winsock2.h>
 #include <network/TcpSocket.h>
 #include <rfb_win32/SocketManager.h>
 
@@ -40,10 +39,12 @@ namespace winvnc {
     void setPort(int port, bool localOnly=false);
     void setFilter(const char* filter);
     void setAddressChangeNotifier(rfb::win32::SocketManager::AddressChangeNotifier* acn);
-  
-    network::TcpListener* sock;
+
+    bool isListening();
+
   protected:
     void refresh();
+    std::list<network::SocketListener*> sockets;
     network::TcpFilter* filter;
     rfb::win32::SocketManager* manager;
     rfb::win32::SocketManager::AddressChangeNotifier* addrChangeNotifier;

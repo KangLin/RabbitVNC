@@ -22,14 +22,20 @@
 #include <winvnc/VNCServerService.h>
 #include <winvnc/resource.h>
 
+#include <os/Mutex.h>
+#include <os/Thread.h>
+
 #include <rfb/LogWriter.h>
 #include <rfb/Configuration.h>
+
 #include <rfb_win32/LaunchProcess.h>
 #include <rfb_win32/TrayIcon.h>
 #include <rfb_win32/AboutDialog.h>
 #include <rfb_win32/MsgBox.h>
 #include <rfb_win32/Service.h>
 #include <rfb_win32/CurrentUser.h>
+
+#include <winvnc/ControlPanel.h>
 
 using namespace rfb;
 using namespace win32;
@@ -62,9 +68,9 @@ namespace winvnc {
 
 class STrayIcon : public TrayIcon {
 public:
-  STrayIcon(STrayIconThread& t) : thread(t),
+  STrayIcon(STrayIconThread& t) :
     vncConfig(_T("vncconfig.exe"), isServiceProcess() ? _T("-noconsole -service") : _T("-noconsole")),
-    vncConnect(_T("winvnc4.exe"), _T("-noconsole -connect")) {
+    vncConnect(_T("winvnc4.exe"), _T("-noconsole -connect")), thread(t) {
 
     // ***
     SetWindowText(getHandle(), _T("winvnc::IPC_Interface"));
@@ -73,6 +79,7 @@ public:
     SetTimer(getHandle(), 1, 3000, 0);
     PostMessage(getHandle(), WM_TIMER, 1, 0);
     PostMessage(getHandle(), WM_SET_TOOLTIP, 0, 0);
+    CPanel = new ControlPanel(getHandle());
   }
 
   virtual LRESULT processMessage(UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -86,7 +93,7 @@ public:
 
         switch (lParam) {
         case WM_LBUTTONDBLCLK:
-          SendMessage(getHandle(), WM_COMMAND, allowOptions ? ID_OPTIONS : ID_ABOUT, 0);
+          SendMessage(getHandle(), WM_COMMAND, ID_CONTR0L_PANEL, 0);
           break;
         case WM_RBUTTONUP:
           HMENU menu = LoadMenu(GetModuleHandle(0), MAKEINTRESOURCE(thread.menu));
@@ -94,12 +101,15 @@ public:
 
 
           // Default item is Options, if available, or About if not
-          SetMenuDefaultItem(trayMenu, allowOptions ? ID_OPTIONS : ID_ABOUT, FALSE);
+          SetMenuDefaultItem(trayMenu, ID_CONTR0L_PANEL, FALSE);
           
           // Enable/disable options as required
           EnableMenuItem(trayMenu, ID_OPTIONS, (!allowOptions ? MF_GRAYED : MF_ENABLED) | MF_BYCOMMAND);
           EnableMenuItem(trayMenu, ID_CONNECT, (!userKnown ? MF_GRAYED : MF_ENABLED) | MF_BYCOMMAND);
           EnableMenuItem(trayMenu, ID_CLOSE, (!allowClose ? MF_GRAYED : MF_ENABLED) | MF_BYCOMMAND);
+
+          thread.server.getClientsInfo(&LCInfo);
+          CheckMenuItem(trayMenu, ID_DISABLE_NEW_CLIENTS, (LCInfo.getDisable() ? MF_CHECKED : MF_UNCHECKED) | MF_BYCOMMAND);
 
           // SetForegroundWindow is required, otherwise Windows ignores the
           // TrackPopupMenu because the window isn't the foreground one, on
@@ -110,31 +120,31 @@ public:
           POINT pos;
           GetCursorPos(&pos);
           TrackPopupMenu(trayMenu, 0, pos.x, pos.y, 0, getHandle(), 0);
+
           break;
-			  } 
-			  return 0;
+		} 
+        return 0;
       }
     
       // Handle tray icon menu commands
     case WM_COMMAND:
       switch (LOWORD(wParam)) {
-      case ID_OPTIONS:
+      case ID_CONTR0L_PANEL:
+        CPanel->showDialog();
+        break;
+      case ID_DISABLE_NEW_CLIENTS:
         {
-          CurrentUserToken token;
-          if (token.canImpersonate())
-            vncConfig.start(isServiceProcess() ? (HANDLE)token : INVALID_HANDLE_VALUE);
-          else
-            vlog.error("Options: unknown current user");
+          thread.server.getClientsInfo(&LCInfo);
+          LCInfo.setDisable(!LCInfo.getDisable());
+          thread.server.setClientsStatus(&LCInfo);
+          CPanel->UpdateListView(&LCInfo);
         }
         break;
+      case ID_OPTIONS:
+        vncConfig.start(INVALID_HANDLE_VALUE);
+        break;
       case ID_CONNECT:
-        {
-          CurrentUserToken token;
-          if (token.canImpersonate())
-            vncConnect.start(isServiceProcess() ? (HANDLE)token : INVALID_HANDLE_VALUE);
-          else
-            vlog.error("Options: unknown current user");
-        }
+        vncConnect.start(INVALID_HANDLE_VALUE);
         break;
       case ID_DISCONNECT:
         thread.server.disconnectClients("tray menu disconnect");
@@ -143,7 +153,6 @@ public:
         if (MsgBox(0, _T("Are you sure you want to close the server?"),
                    MB_ICONQUESTION | MB_YESNO | MB_DEFBUTTON2) == IDYES) {
           if (isServiceProcess()) {
-            ImpersonateCurrentUser icu;
             try {
               rfb::win32::stopService(VNCServerService::Name);
             } catch (rdr::Exception& e) {
@@ -174,6 +183,12 @@ public:
           }
         case 2:
           return thread.server.disconnectClients("IPC disconnect") ? 1 : 0;
+        case 3:
+          thread.server.setClientsStatus(&CPanel->ListConnStatus);
+        case 4:
+          thread.server.getClientsInfo(&LCInfo);
+          CPanel->UpdateListView(&LCInfo);
+          break;
         };
       };
       break;
@@ -187,12 +202,19 @@ public:
         SendMessage(getHandle(), WM_CLOSE, 0, 0);
         return 0;
       }
-      setIcon(thread.server.isServerInUse() ? thread.activeIcon : thread.inactiveIcon);
+
+      thread.server.getClientsInfo(&LCInfo);
+      CPanel->UpdateListView(&LCInfo);
+
+      setIcon(thread.server.isServerInUse() ?
+              (!LCInfo.getDisable() ? thread.activeIcon : thread.dis_activeIcon) : 
+              (!LCInfo.getDisable() ? thread.inactiveIcon : thread.dis_inactiveIcon));
+
       return 0;
 
     case WM_SET_TOOLTIP:
       {
-        rfb::Lock l(thread.lock);
+        os::AutoMutex a(thread.lock);
         if (thread.toolTip.buf)
           setToolTip(thread.toolTip.buf);
       }
@@ -207,17 +229,31 @@ protected:
   LaunchProcess vncConfig;
   LaunchProcess vncConnect;
   STrayIconThread& thread;
+  ControlPanel * CPanel;
+  ListConnInfo LCInfo;
 };
 
 
-STrayIconThread::STrayIconThread(VNCServerWin32& sm, UINT inactiveIcon_, UINT activeIcon_, UINT menu_)
-: Thread("TrayIcon"), server(sm), inactiveIcon(inactiveIcon_), activeIcon(activeIcon_), menu(menu_),
-  windowHandle(0), runTrayIcon(true) {
+STrayIconThread::STrayIconThread(VNCServerWin32& sm, UINT inactiveIcon_, UINT activeIcon_, 
+                                 UINT dis_inactiveIcon_, UINT dis_activeIcon_, UINT menu_)
+: thread_id(-1), windowHandle(0), server(sm),
+  inactiveIcon(inactiveIcon_), activeIcon(activeIcon_),
+  dis_inactiveIcon(dis_inactiveIcon_), dis_activeIcon(dis_activeIcon_),
+  menu(menu_), runTrayIcon(true) {
+  lock = new os::Mutex;
   start();
+  while (thread_id == (DWORD)-1)
+    Sleep(0);
 }
 
+STrayIconThread::~STrayIconThread() {
+  runTrayIcon = false;
+  PostThreadMessage(thread_id, WM_QUIT, 0, 0);
+  delete lock;
+}
 
-void STrayIconThread::run() {
+void STrayIconThread::worker() {
+  thread_id = GetCurrentThreadId();
   while (runTrayIcon) {
     if (rfb::win32::desktopChangeRequired() && 
       !rfb::win32::changeDesktop())
@@ -238,7 +274,7 @@ void STrayIconThread::run() {
 
 void STrayIconThread::setToolTip(const TCHAR* text) {
   if (!windowHandle) return;
-  Lock l(lock);
+  os::AutoMutex a(lock);
   delete [] toolTip.buf;
   toolTip.buf = tstrDup(text);
   PostMessage(windowHandle, WM_SET_TOOLTIP, 0, 0);

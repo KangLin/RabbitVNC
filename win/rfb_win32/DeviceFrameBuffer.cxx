@@ -1,4 +1,5 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
+ * Copyright 2014-2017 Pierre Ossman for Cendio AB
  * 
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,7 +25,6 @@
 #include <vector>
 #include <rfb_win32/DeviceFrameBuffer.h>
 #include <rfb_win32/DeviceContext.h>
-#include <rfb_win32/OSVersion.h>
 #include <rfb_win32/IconInfo.h>
 #include <rfb/VNCServer.h>
 #include <rfb/LogWriter.h>
@@ -42,7 +42,7 @@ BoolParameter DeviceFrameBuffer::useCaptureBlt("UseCaptureBlt",
 // -=- DeviceFrameBuffer class
 
 DeviceFrameBuffer::DeviceFrameBuffer(HDC deviceContext, const Rect& wRect)
-  : DIBSectionBuffer(deviceContext), device(deviceContext), cursorBm(deviceContext),
+  : DIBSectionBuffer(deviceContext), device(deviceContext),
     ignoreGrabErrors(false)
 {
 
@@ -74,29 +74,10 @@ DeviceFrameBuffer::DeviceFrameBuffer(HDC deviceContext, const Rect& wRect)
   if (w % 2) w--;
 
   // Configure the underlying DIB to match the device
-  DIBSectionBuffer::setPF(DeviceContext::getPF(device));
-  DIBSectionBuffer::setSize(w, h);
-
-  // Configure the cursor buffer
-  cursorBm.setPF(format);
-
-  // Set up a palette if required
-  if (!format.trueColour)
-    updateColourMap();
+  initBuffer(DeviceContext::getPF(device), w, h);
 }
 
 DeviceFrameBuffer::~DeviceFrameBuffer() {
-}
-
-
-void
-DeviceFrameBuffer::setPF(const PixelFormat &pf) {
-  throw Exception("setPF not supported");
-}
-
-void
-DeviceFrameBuffer::setSize(int w, int h) {
-  throw Exception("setSize not supported");
 }
 
 
@@ -111,10 +92,9 @@ DeviceFrameBuffer::grabRect(const Rect &rect) {
   // Map the rectangle coords from VNC Desktop-relative to device relative - usually (0,0)
   Point src = desktopToDevice(rect.tl);
 
-  // Note: Microsoft's documentation lies directly about CAPTUREBLT and claims it works on 98/ME
-  //       If you try CAPTUREBLT on 98 then you get blank output...
-  if (!::BitBlt(tmpDC, rect.tl.x, rect.tl.y, rect.width(), rect.height(), device, src.x, src.y,
-    (osVersion.isPlatformNT && useCaptureBlt) ? (CAPTUREBLT | SRCCOPY) : SRCCOPY)) {
+  if (!::BitBlt(tmpDC, rect.tl.x, rect.tl.y,
+                rect.width(), rect.height(), device, src.x, src.y,
+                useCaptureBlt ? (CAPTUREBLT | SRCCOPY) : SRCCOPY)) {
     if (ignoreGrabErrors)
       vlog.error("BitBlt failed:%ld", GetLastError());
     else
@@ -134,47 +114,19 @@ DeviceFrameBuffer::grabRegion(const Region &rgn) {
 }
 
 
-void copyDevicePaletteToDIB(HDC dc, DIBSectionBuffer* dib) {
-  // - Fetch the system palette for the framebuffer
-  PALETTEENTRY syspalette[256];
-  UINT entries = ::GetSystemPaletteEntries(dc, 0, 256, syspalette);
-
-  if (entries == 0) {
-    vlog.info("resorting to standard 16 colour palette");
-    for (unsigned int i=0;i<256;i++) {
-      int v = (i%16) >= 8 ? 127 : 255;
-      syspalette[i].peRed = i & 1 ? v : 0;
-      syspalette[i].peGreen = i & 2 ? v : 0;
-      syspalette[i].peBlue = i & 4 ? v : 0;
-    }
-  } else {
-    vlog.info("framebuffer has %u palette entries", entries);
-  }
-
-  // - Update the bitmap's stored copy of the palette
-  for (unsigned int i=0;i<256;i++) {
-    int r, g, b;
-    r = (syspalette[i].peRed << 8) + 0x80;
-    g = (syspalette[i].peGreen << 8) + 0x80;
-    b = (syspalette[i].peBlue << 8) + 0x80;
-    dib->setColour(i, r, g, b);
-  }
-
-  // - Update the DIB section to use the palette
-  dib->refreshPalette();
-}
-
-
 void DeviceFrameBuffer::setCursor(HCURSOR hCursor, VNCServer* server)
 {
   // - If hCursor is null then there is no cursor - clear the old one
 
   if (hCursor == 0) {
-    server->setCursor(0, 0, Point(), 0, 0);
+    server->setCursor(0, 0, Point(), NULL);
     return;
   }
 
   try {
+
+    int width, height;
+    rdr::U8Array buffer;
 
     // - Get the size and other details about the cursor.
 
@@ -188,102 +140,172 @@ void DeviceFrameBuffer::setCursor(HCURSOR hCursor, VNCServer* server)
     if (maskInfo.bmBitsPixel != 1)
       throw rdr::Exception("unsupported cursor mask format");
 
-    // - Create the cursor pixel buffer and mask storage
-    //   NB: The cursor pixel buffer is NOT used here.  Instead, we
-    //   pass the cursorBm.data pointer directly, to save overhead.
-
-    cursor.setSize(maskInfo.bmWidth, maskInfo.bmHeight);
-    cursor.setPF(format);
-    cursor.hotspot = Point(iconInfo.xHotspot, iconInfo.yHotspot);
-
-    // - Get the AND and XOR masks.  There is only an XOR mask if this is not a
-    // colour cursor.
-
+    width = maskInfo.bmWidth;
+    height = maskInfo.bmHeight;
     if (!iconInfo.hbmColor)
-      cursor.setSize(cursor.width(), cursor.height() / 2);
-    rdr::U8Array mask(maskInfo.bmWidthBytes * maskInfo.bmHeight);
-    rdr::U8* xorMask = mask.buf + cursor.height() * maskInfo.bmWidthBytes;
+      height /= 2;
 
-    if (!GetBitmapBits(iconInfo.hbmMask,
-                       maskInfo.bmWidthBytes * maskInfo.bmHeight, mask.buf))
-      throw rdr::SystemException("GetBitmapBits failed", GetLastError());
+    buffer.buf = new rdr::U8[width * height * 4];
 
-    // Configure the cursor bitmap
-    cursorBm.setSize(cursor.width(), cursor.height());
+    Point hotspot = Point(iconInfo.xHotspot, iconInfo.yHotspot);
 
-    // Copy the palette into it if required
-    if (format.bpp <= 8)
-      copyDevicePaletteToDIB(device, &cursorBm);
+    if (iconInfo.hbmColor) {
+      // Colour cursor
 
-    // Draw the cursor into the bitmap
-    BitmapDC dc(device, cursorBm.bitmap);
-    if (!DrawIconEx(dc, 0, 0, hCursor, 0, 0, 0, NULL, DI_NORMAL | DI_COMPAT))
-      throw rdr::SystemException("unable to render cursor", GetLastError());
+      BITMAPV5HEADER bi;
+      BitmapDC dc(device, iconInfo.hbmColor);
 
-    // Replace any XORed pixels with xorColour, because RFB doesn't support
-    // XORing of cursors.  XORing is used for the I-beam cursor, which is most
-    // often used over a white background, but also sometimes over a black
-    // background.  We set the XOR'd pixels to black, then draw a white outline
-    // around the whole cursor.
+      memset(&bi, 0, sizeof(BITMAPV5HEADER));
 
-    // *** should we replace any pixels not set in mask to zero, to ensure
-    // that irrelevant data doesn't screw compression?
+      bi.bV5Size        = sizeof(BITMAPV5HEADER);
+      bi.bV5Width       = width;
+      bi.bV5Height      = -height; // Negative for top-down
+      bi.bV5Planes      = 1;
+      bi.bV5BitCount    = 32;
+      bi.bV5Compression = BI_BITFIELDS;
+      bi.bV5RedMask     = 0x000000FF;
+      bi.bV5GreenMask   = 0x0000FF00;
+      bi.bV5BlueMask    = 0x00FF0000;
+      bi.bV5AlphaMask   = 0xFF000000;
 
-    bool doOutline = false;
-    if (!iconInfo.hbmColor) {
-      Pixel xorColour = format.pixelFromRGB(0, 0, 0, cursorBm.getColourMap());
-      for (int y = 0; y < cursor.height(); y++) {
-        bool first = true;
-        for (int x = 0; x < cursor.width(); x++) {
+      if (!GetDIBits(dc, iconInfo.hbmColor, 0, height,
+                     buffer.buf, (LPBITMAPINFO)&bi, DIB_RGB_COLORS))
+        throw rdr::SystemException("GetDIBits", GetLastError());
+
+      // We may not get the RGBA order we want, so shuffle things around
+      int ridx, gidx, bidx, aidx;
+
+      ridx = __builtin_ffs(bi.bV5RedMask) / 8;
+      gidx = __builtin_ffs(bi.bV5GreenMask) / 8;
+      bidx = __builtin_ffs(bi.bV5BlueMask) / 8;
+      // Usually not set properly
+      aidx = 6 - ridx - gidx - bidx;
+
+      if ((bi.bV5RedMask != ((unsigned)0xff << ridx*8)) ||
+          (bi.bV5GreenMask != ((unsigned)0xff << gidx*8)) ||
+          (bi.bV5BlueMask != ((unsigned)0xff << bidx*8)))
+        throw rdr::Exception("unsupported cursor colour format");
+
+      rdr::U8* rwbuffer = buffer.buf;
+      for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+          rdr::U8 r, g, b, a;
+
+          r = rwbuffer[ridx];
+          g = rwbuffer[gidx];
+          b = rwbuffer[bidx];
+          a = rwbuffer[aidx];
+
+          rwbuffer[0] = r;
+          rwbuffer[1] = g;
+          rwbuffer[2] = b;
+          rwbuffer[3] = a;
+
+          rwbuffer += 4;
+        }
+      }
+    } else {
+      // B/W cursor
+
+      rdr::U8Array mask(maskInfo.bmWidthBytes * maskInfo.bmHeight);
+      rdr::U8* andMask = mask.buf;
+      rdr::U8* xorMask = mask.buf + height * maskInfo.bmWidthBytes;
+
+      if (!GetBitmapBits(iconInfo.hbmMask,
+                         maskInfo.bmWidthBytes * maskInfo.bmHeight, mask.buf))
+        throw rdr::SystemException("GetBitmapBits", GetLastError());
+
+      bool doOutline = false;
+      rdr::U8* rwbuffer = buffer.buf;
+      for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
           int byte = y * maskInfo.bmWidthBytes + x / 8;
           int bit = 7 - x % 8;
-          if ((mask.buf[byte] & (1 << bit)) && (xorMask[byte] & (1 << bit)))
-          {
-            mask.buf[byte] &= ~(1 << bit);
 
-            switch (format.bpp) {
-            case 8:
-              ((rdr::U8*)cursorBm.data)[y * cursor.width() + x] = xorColour;  break;
-            case 16:
-              ((rdr::U16*)cursorBm.data)[y * cursor.width() + x] = xorColour; break;
-            case 32:
-              ((rdr::U32*)cursorBm.data)[y * cursor.width() + x] = xorColour; break;
-            }
+          if (!(andMask[byte] & (1 << bit))) {
+            // Valid pixel, so make it opaque
+            rwbuffer[3] = 0xff;
+
+            // Black or white?
+            if (xorMask[byte] & (1 << bit))
+              rwbuffer[0] = rwbuffer[1] = rwbuffer[2] = 0xff;
+            else
+              rwbuffer[0] = rwbuffer[1] = rwbuffer[2] = 0;
+          } else if (xorMask[byte] & (1 << bit)) {
+            // Replace any XORed pixels with black, because RFB doesn't support
+            // XORing of cursors.  XORing is used for the I-beam cursor, which is most
+            // often used over a white background, but also sometimes over a black
+            // background.  We set the XOR'd pixels to black, then draw a white outline
+            // around the whole cursor.
+
+            rwbuffer[0] = rwbuffer[1] = rwbuffer[2] = 0;
+            rwbuffer[3] = 0xff;
 
             doOutline = true;
+          } else {
+            // Transparent pixel
+            rwbuffer[0] = rwbuffer[1] = rwbuffer[2] = rwbuffer[3] = 0;
           }
+
+          rwbuffer += 4;
         }
+      }
+
+      if (doOutline) {
+        vlog.debug("drawing cursor outline!");
+
+        // The buffer needs to be slightly larger to make sure there
+        // is room for the outline pixels
+        rdr::U8Array outline((width + 2)*(height + 2)*4);
+        memset(outline.buf, 0, (width + 2)*(height + 2)*4);
+
+        // Pass 1, outline everything
+        rdr::U8* in = buffer.buf;
+        rdr::U8* out = outline.buf + width*4 + 4;
+        for (int y = 0; y < height; y++) {
+          for (int x = 0; x < width; x++) {
+            // Visible pixel?
+            if (in[3] > 0) {
+              // Outline above...
+              memset(out - (width+2)*4 - 4, 0xff, 4 * 3);
+              // ...besides...
+              memset(out - 4, 0xff, 4 * 3);
+              // ...and above
+              memset(out + (width+2)*4 - 4, 0xff, 4 * 3);
+            }
+            in += 4;
+            out += 4;
+          }
+          // outline is slightly larger
+          out += 2*4;
+        }
+
+        // Pass 2, overwrite with actual cursor
+        in = buffer.buf;
+        out = outline.buf + width*4 + 4;
+        for (int y = 0; y < height; y++) {
+          for (int x = 0; x < width; x++) {
+            if (in[3] > 0)
+              memcpy(out, in, 4);
+            in += 4;
+            out += 4;
+          }
+          out += 2*4;
+        }
+
+        width += 2;
+        height += 2;
+        hotspot.x += 1;
+        hotspot.y += 1;
+
+        delete [] buffer.buf;
+        buffer.buf = outline.takeBuf();
       }
     }
 
-    // Finally invert the AND mask so it's suitable for RFB and pack it into
-    // the minimum number of bytes per row.
+    server->setCursor(width, height, hotspot, buffer.buf);
 
-    int maskBytesPerRow = (cursor.width() + 7) / 8;
-
-    for (int j = 0; j < cursor.height(); j++) {
-      for (int i = 0; i < maskBytesPerRow; i++)
-        cursor.mask.buf[j * maskBytesPerRow + i]
-          = ~mask.buf[j * maskInfo.bmWidthBytes + i];
-    }
-
-    if (doOutline) {
-      vlog.debug("drawing cursor outline!");
-      memcpy(cursor.data, cursorBm.data, cursor.dataLen());
-      cursor.drawOutline(format.pixelFromRGB(0xffff, 0xffff, 0xffff, cursorBm.getColourMap()));
-      memcpy(cursorBm.data, cursor.data, cursor.dataLen());
-    }
-
-    server->setCursor(cursor.width(), cursor.height(), cursor.hotspot,
-                      cursorBm.data, cursor.mask.buf);
   } catch (rdr::Exception& e) {
-    vlog.error(e.str());
+    vlog.error("%s", e.str());
   }
-}
-
-
-void
-DeviceFrameBuffer::updateColourMap() {
-  if (!format.trueColour)
-    copyDevicePaletteToDIB(device, this);
 }

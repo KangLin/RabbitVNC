@@ -1,4 +1,5 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
+ * Copyright 2018 Pierre Ossman for Cendio AB
  * 
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,11 +21,7 @@
 #define __RFB_TIMER_H__
 
 #include <list>
-#ifdef WIN32
-//#include <winsock2.h>
-#else
-#include <sys/time.h>
-#endif
+#include <os/os.h>
 
 namespace rfb {
 
@@ -38,6 +35,8 @@ namespace rfb {
      dispatch elapsed Timer callbacks and to determine how long to wait in select() for
      the next timeout to occur.
 
+     For classes that can be derived it's best to use MethodTimer which can call a specific
+     method on the class, thus avoiding conflicts when subclassing.
   */
 
   struct Timer {
@@ -49,6 +48,8 @@ namespace rfb {
       //   appropriate interval.
       //   If the handler returns false then the Timer is cancelled.
       virtual bool handleTimeout(Timer* t) = 0;
+
+      virtual ~Callback() {}
     };
 
     // checkTimeouts()
@@ -83,6 +84,11 @@ namespace rfb {
     //   Usually used with isStarted() to get the _current_ timeout.
     int getTimeoutMs();
 
+    // getRemainingMs
+    //   Determines how many milliseconds are left before the Timer
+    //   will timeout. Only valid for an active timer.
+    int getRemainingMs();
+
     // isBefore
     //   Determine whether the Timer will timeout before the specified time.
     bool isBefore(timeval other);
@@ -95,6 +101,19 @@ namespace rfb {
     static void insertTimer(Timer* t);
     // The list of currently active Timers, ordered by time left until timeout.
     static std::list<Timer*> pending;
+  };
+
+  template<class T> class MethodTimer
+    : public Timer, public Timer::Callback {
+  public:
+    MethodTimer(T* obj_, bool (T::*cb_)(Timer*))
+      : Timer(this), obj(obj_), cb(cb_) {}
+
+    virtual bool handleTimeout(Timer* t) { return (obj->*cb)(t); }
+
+  private:
+    T* obj;
+    bool (T::*cb)(Timer*);
   };
 
 };

@@ -28,52 +28,65 @@
 #ifndef __NETWORK_TCP_SOCKET_H__
 #define __NETWORK_TCP_SOCKET_H__
 
+#ifndef WIN32
+#include <sys/socket.h> /* for socklen_t */
+#include <netinet/in.h> /* for struct sockaddr_in */
+#endif
+
 #include <network/Socket.h>
 
 #include <list>
 
+/* Tunnelling support. */
+#define TUNNEL_PORT_OFFSET 5500
+
 namespace network {
+
+  /* Tunnelling support. */
+  int findFreeTcpPort (void);
+
+  int getSockPort(int sock);
 
   class TcpSocket : public Socket {
   public:
-    TcpSocket(int sock, bool close=true);
+    TcpSocket(int sock);
     TcpSocket(const char *name, int port);
-    virtual ~TcpSocket();
-
-    virtual char* getMyAddress();
-    virtual int getMyPort();
-    virtual char* getMyEndpoint();
 
     virtual char* getPeerAddress();
-    virtual int getPeerPort();
     virtual char* getPeerEndpoint();
-    virtual bool sameMachine();
 
-    virtual void shutdown();
-
-    static bool enableNagles(int sock, bool enable);
-    static bool isSocket(int sock);
-    static bool isConnected(int sock);
-    static int getSockPort(int sock);
-  private:
-    bool closeFd;
+  protected:
+    bool enableNagles(bool enable);
   };
 
   class TcpListener : public SocketListener {
   public:
-    TcpListener(int port, bool localhostOnly=false, int sock=-1,
-                bool close=true);
-    virtual ~TcpListener();
+    TcpListener(const struct sockaddr *listenaddr, socklen_t listenaddrlen);
+    TcpListener(int sock);
 
-    virtual void shutdown();
-    virtual Socket* accept();
+    virtual int getMyPort();
 
-    void getMyAddresses(std::list<char*>* addrs);
-    int getMyPort();
+    static void getMyAddresses(std::list<char*>* result);
 
-  private:
-    bool closeFd;
+  protected:
+    virtual Socket* createSocket(int fd);
   };
+
+  void createLocalTcpListeners(std::list<SocketListener*> *listeners,
+                               int port);
+  void createTcpListeners(std::list<SocketListener*> *listeners,
+                          const char *addr,
+                          int port);
+  void createTcpListeners(std::list<SocketListener*> *listeners,
+                          const struct addrinfo *ai);
+
+  typedef struct vnc_sockaddr {
+    union {
+      sockaddr     sa;
+      sockaddr_in  sin;
+      sockaddr_in6 sin6;
+    } u;
+  } vnc_sockaddr_t;
 
   class TcpFilter : public ConnectionFilter {
   public:
@@ -85,8 +98,10 @@ namespace network {
     typedef enum {Accept, Reject, Query} Action;
     struct Pattern {
       Action action;
-      unsigned long address;
-      unsigned long mask;
+      vnc_sockaddr_t address;
+      unsigned int prefixlen;
+
+      vnc_sockaddr_t mask; // computed from address and prefix
     };
     static Pattern parsePattern(const char* s);
     static char* patternToStr(const Pattern& p);

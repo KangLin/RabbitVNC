@@ -25,7 +25,6 @@
 #ifndef __RFB_WIN32_WM_CURSOR_H__
 #define __RFB_WIN32_WM_CURSOR_H__
 
-#include <windows.h>
 #include <rfb_win32/WMHooks.h>
 
 namespace rfb {
@@ -50,8 +49,6 @@ namespace rfb {
 
       Info getCursorInfo();
     protected:
-      WMCursorHooks* hooks;
-      bool use_getCursorInfo;
       HCURSOR cursor;
     };
 

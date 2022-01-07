@@ -26,14 +26,16 @@ namespace winvnc {
 
   class VNCServerService : public rfb::win32::Service {
   public:
-    VNCServerService(VNCServerWin32& s);
+    VNCServerService();
 
     DWORD serviceMain(int argc, TCHAR* argv[]);
     void stop();
 
     static const TCHAR* Name;
   protected:
-    VNCServerWin32& server;
+    rfb::win32::Handle stopServiceEvent;
+    rfb::win32::Handle sessionEvent;
+    rfb::win32::Handle sessionEventCad;
   };
 
 };

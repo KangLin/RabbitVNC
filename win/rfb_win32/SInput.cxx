@@ -30,26 +30,13 @@
 #include <rfb_win32/SInput.h>
 #include <rfb_win32/MonitorInfo.h>
 #include <rfb_win32/Service.h>
-#include <rfb_win32/OSVersion.h>
-#include <rfb_win32/DynamicFn.h>
 #include <rfb_win32/keymap.h>
 #include <rdr/Exception.h>
 #include <rfb/LogWriter.h>
 
-#if(defined(INPUT_MOUSE) && defined(RFB_HAVE_MONITORINFO))
-#define RFB_HAVE_SENDINPUT
-#else
-#pragma message("  NOTE: Not building SendInput support.")
-#endif
-
 using namespace rfb;
 
 static LogWriter vlog("SInput");
-
-#ifdef RFB_HAVE_SENDINPUT
-typedef UINT (WINAPI *_SendInput_proto)(UINT, LPINPUT, int);
-static win32::DynamicFn<_SendInput_proto> _SendInput(_T("user32.dll"), "SendInput");
-#endif
 
 //
 // -=- Pointer implementation for Win32
@@ -66,7 +53,7 @@ static DWORD buttonUpMapping[8] = {
 };
 
 static DWORD buttonDataMapping[8] = {
-  0, 0, 0, 120, -120, 0, 0, 0
+  0, 0, 0, 120, (DWORD)-120, 0, 0, 0
 };
 
 win32::SPointer::SPointer()
@@ -125,44 +112,18 @@ win32::SPointer::pointerEvent(const Point& pos, int buttonmask)
     // The event lies outside the primary monitor.  Under Win2K, we can just use
     // SendInput, which allows us to provide coordinates scaled to the virtual desktop.
     // SendInput is available on all multi-monitor-aware platforms.
-#ifdef RFB_HAVE_SENDINPUT
-    if (osVersion.isPlatformNT) {
-      if (!_SendInput.isValid())
-        throw rdr::Exception("SendInput not available");
-      INPUT evt;
-      evt.type = INPUT_MOUSE;
-      Point vPos(pos.x-GetSystemMetrics(SM_XVIRTUALSCREEN),
-                 pos.y-GetSystemMetrics(SM_YVIRTUALSCREEN));
-      evt.mi.dx = (vPos.x * 65535) / (GetSystemMetrics(SM_CXVIRTUALSCREEN)-1);
-      evt.mi.dy = (vPos.y * 65535) / (GetSystemMetrics(SM_CYVIRTUALSCREEN)-1);
-      evt.mi.dwFlags = flags | MOUSEEVENTF_VIRTUALDESK;
-      evt.mi.dwExtraInfo = 0;
-      evt.mi.mouseData = data;
-      evt.mi.time = 0;
-      if ((*_SendInput)(1, &evt, sizeof(evt)) != 1)
-        throw rdr::SystemException("SendInput", GetLastError());
-    } else {
-      // Under Win9x, this is not addressable by either mouse_event or SendInput
-      // *** STUPID KLUDGY HACK ***
-      POINT cursorPos; GetCursorPos(&cursorPos);
-      ULONG oldSpeed, newSpeed = 10;
-      ULONG mouseInfo[3];
-      if (flags & MOUSEEVENTF_MOVE) {
-        flags &= ~MOUSEEVENTF_ABSOLUTE;
-        SystemParametersInfo(SPI_GETMOUSE, 0, &mouseInfo, 0);
-        SystemParametersInfo(SPI_GETMOUSESPEED, 0, &oldSpeed, 0);
-        vlog.debug("SPI_GETMOUSE %d, %d, %d, speed %d", mouseInfo[0], mouseInfo[1], mouseInfo[2], oldSpeed);
-        ULONG idealMouseInfo[] = {10, 0, 0};
-        SystemParametersInfo(SPI_SETMOUSESPEED, 0, &newSpeed, 0);
-        SystemParametersInfo(SPI_SETMOUSE, 0, &idealMouseInfo, 0);
-      }
-      ::mouse_event(flags, pos.x-cursorPos.x, pos.y-cursorPos.y, data, 0);
-      if (flags & MOUSEEVENTF_MOVE) {
-        SystemParametersInfo(SPI_SETMOUSE, 0, &mouseInfo, 0);
-        SystemParametersInfo(SPI_SETMOUSESPEED, 0, &oldSpeed, 0);
-      }
-    }
-#endif
+    INPUT evt;
+    evt.type = INPUT_MOUSE;
+    Point vPos(pos.x-GetSystemMetrics(SM_XVIRTUALSCREEN),
+               pos.y-GetSystemMetrics(SM_YVIRTUALSCREEN));
+    evt.mi.dx = (vPos.x * 65535) / (GetSystemMetrics(SM_CXVIRTUALSCREEN)-1);
+    evt.mi.dy = (vPos.y * 65535) / (GetSystemMetrics(SM_CYVIRTUALSCREEN)-1);
+    evt.mi.dwFlags = flags | MOUSEEVENTF_VIRTUALDESK;
+    evt.mi.dwExtraInfo = 0;
+    evt.mi.mouseData = data;
+    evt.mi.time = 0;
+    if (SendInput(1, &evt, sizeof(evt)) != 1)
+      throw rdr::SystemException("SendInput", GetLastError());
   }
 }
 
@@ -173,8 +134,9 @@ win32::SPointer::pointerEvent(const Point& pos, int buttonmask)
 BoolParameter rfb::win32::SKeyboard::deadKeyAware("DeadKeyAware",
   "Whether to assume the viewer has already interpreted dead key sequences "
   "into latin-1 characters", true);
-
-static bool oneShift;
+BoolParameter rfb::win32::SKeyboard::rawKeyboard("RawKeyboard",
+  "Send keyboard events straight through and avoid mapping them to the "
+  "current keyboard layout", false);
 
 // The keysymToAscii table transforms a couple of awkward keysyms into their
 // ASCII equivalents.
@@ -266,8 +228,43 @@ latin1ToDeadChars_t latin1ToDeadChars[] = {
 // the appropriate scancode corresponding to the supplied virtual keycode.
 
 inline void doKeyboardEvent(BYTE vkCode, DWORD flags) {
-  vlog.debug("vkCode 0x%x flags 0x%x", vkCode, flags);
+  vlog.debug("vkCode 0x%x flags 0x%lx", vkCode, flags);
   keybd_event(vkCode, MapVirtualKey(vkCode, 0), flags, 0);
+}
+
+inline void doScanCodeEvent(BYTE scancode, bool down) {
+  INPUT evt;
+
+  evt.type = INPUT_KEYBOARD;
+  evt.ki.wVk = 0;
+  evt.ki.dwFlags = KEYEVENTF_SCANCODE;
+
+  if (!down)
+    evt.ki.dwFlags |= KEYEVENTF_KEYUP;
+
+  if (scancode & 0x80) {
+    evt.ki.dwFlags |= KEYEVENTF_EXTENDEDKEY;
+    scancode &= ~0x80;
+  }
+
+  evt.ki.wScan = scancode;
+  evt.ki.dwExtraInfo = 0;
+  evt.ki.time = 0;
+  vlog.debug("SendInput ScanCode: 0x%x Flags: 0x%lx %s", scancode,
+             evt.ki.dwFlags, down ? "Down" : "Up");
+
+  // Windows has some bug where it doesn't look up scan code 0x45
+  // properly, so we need to help it out
+  if (evt.ki.wScan == 0x45) {
+    evt.ki.dwFlags &= ~KEYEVENTF_SCANCODE;
+    if (evt.ki.dwFlags & KEYEVENTF_EXTENDEDKEY)
+      evt.ki.wVk = VK_NUMLOCK;
+    else
+      evt.ki.wVk = VK_PAUSE;
+  }
+
+  if (SendInput(1, &evt, sizeof(evt)) != 1)
+    vlog.error("SendInput %lu", GetLastError());
 }
 
 // KeyStateModifier is a class which helps simplify generating a "fake" press
@@ -332,8 +329,7 @@ void doKeyEventWithModifiers(BYTE vkCode, BYTE modifierState, bool down)
 
 win32::SKeyboard::SKeyboard()
 {
-  oneShift = rfb::win32::osVersion.isPlatformWindows;
-  for (int i = 0; i < sizeof(keymap) / sizeof(keymap_t); i++) {
+  for (unsigned int i = 0; i < sizeof(keymap) / sizeof(keymap_t); i++) {
     vkMap[keymap[i].keysym] = keymap[i].vk;
     extendedMap[keymap[i].keysym] = keymap[i].extended;
   }
@@ -342,7 +338,7 @@ win32::SKeyboard::SKeyboard()
   // XXX how could we handle the keyboard layout changing?
   BYTE keystate[256];
   memset(keystate, 0, 256);
-  for (int j = 0; j < sizeof(latin1DeadChars); j++) {
+  for (unsigned int j = 0; j < sizeof(latin1DeadChars); j++) {
     SHORT s = VkKeyScan(latin1DeadChars[j]);
     if (s != -1) {
       BYTE vkCode = LOBYTE(s);
@@ -363,9 +359,37 @@ win32::SKeyboard::SKeyboard()
 }
 
 
-void win32::SKeyboard::keyEvent(rdr::U32 keysym, bool down)
+void win32::SKeyboard::keyEvent(rdr::U32 keysym, rdr::U32 keycode, bool down)
 {
-  for (int i = 0; i < sizeof(keysymToAscii) / sizeof(keysymToAscii_t); i++) {
+  // If scan code is available use that directly as windows uses
+  // compatible scancodes
+  if (keycode && rawKeyboard) {
+    // However NumLock incorrectly has the extended bit set
+    if (keycode == 0x45)
+      keycode = 0xc5;
+
+    // And Pause uses NumLock's proper code, except when Control is
+    // also pressed (i.e. when it is generating Break)
+    if ((keycode == 0xc6) && !(GetAsyncKeyState(VK_CONTROL) & 0x8000))
+      keycode = 0x45;
+
+    // And PrintScreen uses a different code than Alt+PrintScreen (SysRq)
+    if ((keycode == 0x54) && !(GetAsyncKeyState(VK_MENU) & 0x8000))
+      keycode = 0xb7;
+
+    if (down && (keycode == 0xd3) &&
+        ((GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0) &&
+        ((GetAsyncKeyState(VK_MENU) & 0x8000) != 0))
+    {
+      rfb::win32::emulateCtrlAltDel();
+      return;
+    }
+
+    doScanCodeEvent(keycode, down);
+    return;
+  }
+
+  for (unsigned int i = 0; i < sizeof(keysymToAscii) / sizeof(keysymToAscii_t); i++) {
     if (keysymToAscii[i].keysym == keysym) {
       keysym = keysymToAscii[i].ascii;
       break;
@@ -380,7 +404,7 @@ void win32::SKeyboard::keyEvent(rdr::U32 keysym, bool down)
     if (deadKeyAware) {
       // Detect dead chars and generate the dead char followed by space so
       // that we'll end up with the original char.
-      for (int i = 0; i < deadChars.size(); i++) {
+      for (unsigned int i = 0; i < deadChars.size(); i++) {
         if (keysym == deadChars[i]) {
           SHORT dc = VkKeyScan(keysym);
           if (dc != -1) {
@@ -402,11 +426,11 @@ void win32::SKeyboard::keyEvent(rdr::U32 keysym, bool down)
     if (s == -1) {
       if (down) {
         // not a single keypress - try synthesizing dead chars.
-        for (int j = 0;
+        for (unsigned int j = 0;
              j < sizeof(latin1ToDeadChars) / sizeof(latin1ToDeadChars_t);
              j++) {
           if (keysym == latin1ToDeadChars[j].latin1Char) {
-            for (int i = 0; i < deadChars.size(); i++) {
+            for (unsigned int i = 0; i < deadChars.size(); i++) {
               if (deadChars[i] == latin1ToDeadChars[j].deadChar) {
                 SHORT dc = VkKeyScan(latin1ToDeadChars[j].deadChar);
                 SHORT bc = VkKeyScan(latin1ToDeadChars[j].baseChar);

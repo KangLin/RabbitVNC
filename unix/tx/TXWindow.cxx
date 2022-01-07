@@ -24,6 +24,7 @@
 #include <list>
 #include <stdio.h>
 #include <stdlib.h>
+#include <vector>
 #include <rfb/util.h>
 
 std::list<TXWindow*> windows;
@@ -45,6 +46,8 @@ Time TXWindow::cutBufferTime = 0;
 Pixmap TXWindow::dot = 0, TXWindow::tick = 0;
 const int TXWindow::dotSize = 4, TXWindow::tickSize = 8;
 char* TXWindow::defaultWindowClass;
+
+TXGlobalEventHandler* TXWindow::globalEventHandler = NULL;
 
 void TXWindow::init(Display* dpy, const char* defaultWindowClass_)
 {
@@ -87,11 +90,11 @@ void TXWindow::init(Display* dpy, const char* defaultWindowClass_)
   XSetFont(dpy, defaultGC, defaultFont);
   XSelectInput(dpy, DefaultRootWindow(dpy), PropertyChangeMask);
 
-  static char dotBits[] = { 0x06, 0x0f, 0x0f, 0x06};
-  dot = XCreateBitmapFromData(dpy, DefaultRootWindow(dpy), dotBits,
+  static unsigned char dotBits[] = { 0x06, 0x0f, 0x0f, 0x06};
+  dot = XCreateBitmapFromData(dpy, DefaultRootWindow(dpy), (char*)dotBits,
                               dotSize, dotSize);
-  static char tickBits[] = { 0x80, 0xc0, 0xe2, 0x76, 0x3e, 0x1c, 0x08, 0x00};
-  tick = XCreateBitmapFromData(dpy, DefaultRootWindow(dpy), tickBits,
+  static unsigned char tickBits[] = { 0x80, 0xc0, 0xe2, 0x76, 0x3e, 0x1c, 0x08, 0x00};
+  tick = XCreateBitmapFromData(dpy, DefaultRootWindow(dpy), (char*)tickBits,
                                tickSize, tickSize);
   defaultWindowClass = rfb::strDup(defaultWindowClass_);
 }
@@ -101,6 +104,10 @@ void TXWindow::handleXEvents(Display* dpy)
   while (XPending(dpy)) {
     XEvent ev;
     XNextEvent(dpy, &ev);
+    if (globalEventHandler) {
+      if (globalEventHandler->handleGlobalEvent(&ev))
+        continue;
+    }
     if (ev.type == MappingNotify) {
       XRefreshKeyboardMapping(&ev.xmapping);
     } else if (ev.type == PropertyNotify &&
@@ -117,22 +124,29 @@ void TXWindow::handleXEvents(Display* dpy)
   }
 }
 
+TXGlobalEventHandler* TXWindow::setGlobalEventHandler(TXGlobalEventHandler* h)
+{
+  TXGlobalEventHandler* old = globalEventHandler;
+  globalEventHandler = h;
+  return old;
+}
+
 void TXWindow::getColours(Display* dpy, XColor* cols, int nCols)
 {
-  bool* got = new bool[nCols];
+  std::vector<bool> got;
+
   bool failed = false;
   int i;
   for (i = 0; i < nCols; i++) {
     if (XAllocColor(dpy, cmap, &cols[i])) {
-      got[i] = true;
+      got.push_back(true);
     } else {
-      got[i] = false;
+      got.push_back(false);
       failed = true;
     }
   }
 
   if (!failed) {
-    delete [] got;
     return;
   }
 
@@ -155,12 +169,13 @@ void TXWindow::getColours(Display* dpy, XColor* cols, int nCols)
   int cmapSize = DisplayCells(dpy,DefaultScreen(dpy));
 
   XColor* cm = new XColor[cmapSize];
-  bool* shared = new bool[cmapSize];
-  bool* usedAsNearest = new bool[cmapSize];
+  std::vector<bool> shared;
+  std::vector<bool> usedAsNearest;
 
   for (i = 0; i < cmapSize; i++) {
     cm[i].pixel = i;
-    shared[i] = usedAsNearest[i] = false;
+    shared.push_back(false);
+    usedAsNearest.push_back(false);
   }
 
   XQueryColors(dpy, cmap, cm, cmapSize);
@@ -284,6 +299,18 @@ void TXWindow::toplevel(const char* name, TXDeleteWindowCallback* dwc_,
     protocols[nProtocols++] = wmDeleteWindow;
   XSetWMProtocols(dpy, win(), protocols, nProtocols);
   addEventMask(StructureNotifyMask);
+}
+
+void TXWindow::setName(const char* name)
+{
+  XClassHint classHint;
+  XGetClassHint(dpy, win(), &classHint);
+  XFree(classHint.res_name);
+  classHint.res_name = (char*)name;
+  XSetClassHint(dpy, win(), &classHint);
+  XFree(classHint.res_class);
+  XStoreName(dpy, win(), name);
+  XSetIconName(dpy, win(), name);    
 }
 
 void TXWindow::setMaxSize(int w, int h)
@@ -442,6 +469,8 @@ void TXWindow::handleXEvent(XEvent* ev)
         } else if (se.target == XA_STRING) {
           if (!selectionRequest(se.requestor, se.selection, se.property))
             se.property = None;
+        } else {
+          se.property = None;
         }
       }
       XSendEvent(dpy, se.requestor, False, 0, (XEvent*)&se);

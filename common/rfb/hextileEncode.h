@@ -1,4 +1,5 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
+ * Copyright (C) 2005 Constantin Kaplinsky.  All Rights Reserved.
  * 
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,10 +19,8 @@
 //
 // Hextile encoding function.
 //
-// This file is #included after having set the following macros:
+// This file is #included after having set the following macro:
 // BPP                - 8, 16 or 32
-// EXTRA_ARGS         - optional extra arguments
-// GET_IMAGE_INTO_BUF - gets a rectangle of pixel data into a buffer
 
 #include <rdr/OutStream.h>
 #include <rfb/hextileConstants.h>
@@ -45,11 +44,7 @@ int TEST_TILE_TYPE (PIXEL_T* data, int w, int h, PIXEL_T* bg, PIXEL_T* fg);
 int HEXTILE_ENCODE_TILE (PIXEL_T* data, int w, int h, int tileType,
                          rdr::U8* encoded, PIXEL_T bg);
 
-void HEXTILE_ENCODE(const Rect& r, rdr::OutStream* os
-#ifdef EXTRA_ARGS
-                    , EXTRA_ARGS
-#endif
-                    )
+void HEXTILE_ENCODE(rdr::OutStream* os, const PixelBuffer* pb)
 {
   Rect t;
   PIXEL_T buf[256];
@@ -58,17 +53,17 @@ void HEXTILE_ENCODE(const Rect& r, rdr::OutStream* os
   bool oldFgValid = false;
   rdr::U8 encoded[256*(BPP/8)];
 
-  for (t.tl.y = r.tl.y; t.tl.y < r.br.y; t.tl.y += 16) {
+  for (t.tl.y = 0; t.tl.y < pb->height(); t.tl.y += 16) {
 
-    t.br.y = __rfbmin(r.br.y, t.tl.y + 16);
+    t.br.y = __rfbmin(pb->height(), t.tl.y + 16);
 
-    for (t.tl.x = r.tl.x; t.tl.x < r.br.x; t.tl.x += 16) {
+    for (t.tl.x = 0; t.tl.x < pb->width(); t.tl.x += 16) {
 
-      t.br.x = __rfbmin(r.br.x, t.tl.x + 16);
+      t.br.x = __rfbmin(pb->width(), t.tl.x + 16);
 
-      GET_IMAGE_INTO_BUF(t,buf);
+      pb->getImage(buf, t);
 
-      PIXEL_T bg, fg;
+      PIXEL_T bg = 0, fg = 0;
       int tileType = TEST_TILE_TYPE(buf, t.width(), t.height(), &bg, &fg);
 
       if (!oldBgValid || oldBg != bg) {
@@ -95,7 +90,7 @@ void HEXTILE_ENCODE(const Rect& r, rdr::OutStream* os
                                          encoded, bg);
 
         if (encodedLen < 0) {
-          GET_IMAGE_INTO_BUF(t,buf);
+          pb->getImage(buf, t);
           os->writeU8(hextileRaw);
           os->writeBytes(buf, t.width() * t.height() * (BPP/8));
           oldBgValid = oldFgValid = false;
@@ -140,33 +135,11 @@ int HEXTILE_ENCODE_TILE (PIXEL_T* data, int w, int h, int tileType,
       while (sh < h-y) {
         eol = ptr + sw;
         while (ptr < eol)
-          if (*ptr++ != *data) goto endOfHorizSubrect;
+          if (*ptr++ != *data) goto endOfSubrect;
         ptr += w - sw;
         sh++;
       }
-    endOfHorizSubrect:
-
-      // Find vertical subrect
-      int vh;
-      for (vh = sh; vh < h-y; vh++)
-        if (data[vh*w] != *data) break;
-
-      if (vh != sh) {
-        ptr = data+1;
-        int vw;
-        for (vw = 1; vw < sw; vw++) {
-          for (int i = 0; i < vh; i++)
-            if (ptr[i*w] != *data) goto endOfVertSubrect;
-          ptr++;
-        }
-      endOfVertSubrect:
-
-        // If vertical subrect bigger than horizontal then use that.
-        if (sw*sh < vw*vh) {
-          sw = vw;
-          sh = vh;
-        }
-      }
+    endOfSubrect:
 
       (*nSubrectsPtr)++;
 
@@ -206,29 +179,32 @@ int HEXTILE_ENCODE_TILE (PIXEL_T* data, int w, int h, int tileType,
 
 int TEST_TILE_TYPE (PIXEL_T* data, int w, int h, PIXEL_T* bg, PIXEL_T* fg)
 {
-  int tileType = 0;
-  PIXEL_T pix1 = *data, pix2 = 0;
-  int count1 = 0, count2 = 0;
-  PIXEL_T* end = data + w*h;
+  PIXEL_T pix1 = *data;
+  PIXEL_T* end = data + w * h;
 
-  for (PIXEL_T* ptr = data; ptr < end; ptr++) {
+  PIXEL_T* ptr = data + 1;
+  while (ptr < end && *ptr == pix1)
+    ptr++;
+
+  if (ptr == end) {
+    *bg = pix1;
+    return 0;                   // solid-color tile
+  }
+
+  int count1 = ptr - data;
+  int count2 = 1;
+  PIXEL_T pix2 = *ptr++;
+  int tileType = hextileAnySubrects;
+
+  for (; ptr < end; ptr++) {
     if (*ptr == pix1) {
       count1++;
-      continue;
-    }
-
-    if (count2 == 0) {
-      tileType |= hextileAnySubrects;
-      pix2 = *ptr;
-    }
-
-    if (*data == pix2) {
+    } else if (*ptr == pix2) {
       count2++;
-      continue;
+    } else {
+      tileType |= hextileSubrectsColoured;
+      break;
     }
-
-    tileType |= hextileSubrectsColoured;
-    break;
   }
 
   if (count1 >= count2) {

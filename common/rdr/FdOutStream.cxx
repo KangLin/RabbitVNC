@@ -1,4 +1,6 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
+ * Copyright 2011 Pierre Ossman for Cendio AB
+ * Copyright 2017 Peter Astrand <astrand@cendio.se> for Cendio AB
  * 
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,159 +18,121 @@
  * USA.
  */
 
-#include <stdio.h>
-#include <string.h>
-#ifdef _WIN32
-#include <winsock2.h>
-#define write(s,b,l) send(s,(const char*)b,l,0)
-#define EWOULDBLOCK WSAEWOULDBLOCK
-#undef errno
-#define errno WSAGetLastError()
-#undef EINTR
-#define EINTR WSAEINTR
-#else
-#include <sys/types.h>
-#include <errno.h>
-#include <unistd.h>
-#include <sys/time.h>
+#ifdef HAVE_CONFIG_H
+#include <config.h>
 #endif
 
+#include <stdio.h>
+#include <string.h>
+#include <errno.h>
+#ifdef _WIN32
+#include <winsock2.h>
+#undef errno
+#define errno WSAGetLastError()
+#include <os/winerrno.h>
+#else
+#include <sys/types.h>
+#include <unistd.h>
+#include <sys/time.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#endif
+
+/* Old systems have select() in sys/time.h */
+#ifdef HAVE_SYS_SELECT_H
+#include <sys/select.h>
+#endif
+
+#include <os/os.h>
 #include <rdr/FdOutStream.h>
 #include <rdr/Exception.h>
+#include <rfb/util.h>
 
 
 using namespace rdr;
 
-enum { DEFAULT_BUF_SIZE = 16384,
-       MIN_BULK_SIZE = 1024 };
-
-FdOutStream::FdOutStream(int fd_, int timeoutms_, int bufSize_)
-  : fd(fd_), timeoutms(timeoutms_),
-    bufSize(bufSize_ ? bufSize_ : DEFAULT_BUF_SIZE), offset(0)
+FdOutStream::FdOutStream(int fd_)
+  : fd(fd_)
 {
-  ptr = start = new U8[bufSize];
-  end = start + bufSize;
+  gettimeofday(&lastWrite, NULL);
 }
 
 FdOutStream::~FdOutStream()
 {
-  try {
-    flush();
-  } catch (Exception&) {
-  }
-  delete [] start;
 }
 
-void FdOutStream::setTimeout(int timeoutms_) {
-  timeoutms = timeoutms_;
-}
-
-void FdOutStream::writeBytes(const void* data, int length)
+unsigned FdOutStream::getIdleTime()
 {
-  if (length < MIN_BULK_SIZE) {
-    OutStream::writeBytes(data, length);
-    return;
-  }
-
-  const U8* dataPtr = (const U8*)data;
-
-  flush();
-
-  while (length > 0) {
-    int n = writeWithTimeout(dataPtr, length);
-    length -= n;
-    dataPtr += n;
-    offset += n;
-  }
+  return rfb::msSince(&lastWrite);
 }
 
-int FdOutStream::length()
+void FdOutStream::cork(bool enable)
 {
-  return offset + ptr - start;
+  BufferedOutStream::cork(enable);
+
+#ifdef TCP_CORK
+  int one = enable ? 1 : 0;
+  setsockopt(fd, IPPROTO_TCP, TCP_CORK, (char *)&one, sizeof(one));
+#endif
 }
 
-void FdOutStream::flush()
+bool FdOutStream::flushBuffer()
 {
-  U8* sentUpTo = start;
-  while (sentUpTo < ptr) {
-    int n = writeWithTimeout((const void*) sentUpTo, ptr - sentUpTo);
-    sentUpTo += n;
-    offset += n;
-  }
+  size_t n = writeFd((const void*) sentUpTo, ptr - sentUpTo);
+  if (n == 0)
+    return false;
 
-  ptr = start;
-}
+  sentUpTo += n;
 
-
-int FdOutStream::overrun(int itemSize, int nItems)
-{
-  if (itemSize > bufSize)
-    throw Exception("FdOutStream overrun: max itemSize exceeded");
-
-  flush();
-
-  if (itemSize * nItems > end - ptr)
-    nItems = (end - ptr) / itemSize;
-
-  return nItems;
+  return true;
 }
 
 //
-// writeWithTimeout() writes up to the given length in bytes from the given
-// buffer to the file descriptor.  If there is a timeout set and that timeout
-// expires, it throws a TimedOut exception.  Otherwise it returns the number of
-// bytes written.  It never attempts to write() unless select() indicates that
-// the fd is writable - this means it can be used on an fd which has been set
-// non-blocking.  It also has to cope with the annoying possibility of both
-// select() and write() returning EINTR.
+// writeFd() writes up to the given length in bytes from the given
+// buffer to the file descriptor. It returns the number of bytes written.  It
+// never attempts to send() unless select() indicates that the fd is writable
+// - this means it can be used on an fd which has been set non-blocking.  It
+// also has to cope with the annoying possibility of both select() and send()
+// returning EINTR.
 //
 
-int FdOutStream::writeWithTimeout(const void* data, int length)
+size_t FdOutStream::writeFd(const void* data, size_t length)
 {
   int n;
 
   do {
+    fd_set fds;
+    struct timeval tv;
 
-    do {
-      fd_set fds;
-      struct timeval tv;
-      struct timeval* tvp = &tv;
+    tv.tv_sec = tv.tv_usec = 0;
 
-      if (timeoutms != -1) {
-        tv.tv_sec = timeoutms / 1000;
-        tv.tv_usec = (timeoutms % 1000) * 1000;
-      } else {
-        tvp = 0;
-      }
+    FD_ZERO(&fds);
+    FD_SET(fd, &fds);
+    n = select(fd+1, 0, &fds, 0, &tv);
+  } while (n < 0 && errno == EINTR);
 
-      FD_ZERO(&fds);
-      FD_SET(fd, &fds);
-#ifdef _WIN32_WCE
-      // NB: This fixes a broken Winsock2 select() behaviour.  select()
-      // never returns for non-blocking sockets, unless they're already
-      // ready to be written to...
-      u_long zero = 0; ioctlsocket(fd, FIONBIO, &zero);
+  if (n < 0)
+    throw SystemException("select", errno);
+
+  if (n == 0)
+    return 0;
+
+  do {
+    // select only guarantees that you can write SO_SNDLOWAT without
+    // blocking, which is normally 1. Use MSG_DONTWAIT to avoid
+    // blocking, when possible.
+#ifndef MSG_DONTWAIT
+    n = ::send(fd, (const char*)data, length, 0);
+#else
+    n = ::send(fd, (const char*)data, length, MSG_DONTWAIT);
 #endif
-      n = select(fd+1, 0, &fds, 0, tvp);
-#ifdef _WIN32_WCE
-      u_long one = 0; ioctlsocket(fd, FIONBIO, &one);
-#endif
-    } while (n < 0 && errno == EINTR);
+  } while (n < 0 && (errno == EINTR));
 
-    if (n < 0) throw SystemException("select",errno);
+  if (n < 0)
+    throw SystemException("write", errno);
 
-    if (n == 0) throw TimedOut();
-
-    do {
-      n = ::write(fd, data, length);
-    } while (n < 0 && (errno == EINTR));
-      
-    // NB: This outer loop simply fixes a broken Winsock2 EWOULDBLOCK
-    // condition, found only under Win98 (first edition), with slow
-    // network connections.  Should in fact never ever happen...
-  } while (n < 0 && (errno == EWOULDBLOCK));
-
-  if (n < 0) throw SystemException("write",errno);
+  gettimeofday(&lastWrite, NULL);
 
   return n;
 }

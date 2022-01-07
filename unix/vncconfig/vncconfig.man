@@ -1,4 +1,4 @@
-.TH vncconfig 1 "03 Mar 2005" "RealVNC Ltd" "Virtual Network Computing"
+.TH vncconfig 1 "" "TigerVNC" "Virtual Network Computing"
 .SH NAME
 vncconfig \- configure and control a VNC server
 .SH SYNOPSIS
@@ -37,14 +37,11 @@ server with the VNC extension.  Note that it cannot be used to control VNC
 servers prior to version 4.
 
 When run with no options, it runs as a kind of "helper" application for Xvnc.
-Its main purpose when run in this mode is to support clipboard transfer to and
-from the VNC viewer(s).  Note that without a running instance of
-\fBvncconfig\fP there will be no clipboard support.  It puts up a window with
-some checkboxes which can be used to disable clipboard transfers if required
-(in the future there may be more functions available from this window).  The
-\fB-nowin\fP flag can be used if you always want clipboard support but don't
-wish to clutter the desktop with this window - alternatively the \fB-iconic\fP
-option can be used to make it iconified by default.
+Its main purpose when run in this mode is to query the user how new
+connections should be handled (provided this feature is enabled). The
+\fB-nowin\fP flag can be used if you always want the query support but don't
+wish to clutter the desktop with the settings window - alternatively the
+\fB-iconic\fP option can be used to make it iconified by default.
 
 When run in any other mode, \fBvncconfig\fP is a one-shot program used to
 configure or control Xvnc as appropriate.  It can be used to tell Xvnc to
@@ -64,26 +61,26 @@ Tells an Xvnc server to make a "reverse" connection to a listening VNC viewer
 server). \fIhost\fP is the host where the listening viewer is running. If it's
 not listening on the default port of 5500, you can specify \fIhost:port\fP
 instead.
-
+.
 .TP
 .B \-disconnect
 This causes Xvnc to disconnect from all viewers so that the VNC desktop is not
 displayed anywhere.
-
+.
 .TP
 [\fB-set\fP] \fIXvnc-param\fP=\fIvalue\fP
 Sets an Xvnc parameter to the given value.  Note that some of Xvnc's parameters
 are read only once at startup so that changing them in this way may not have
 any effect.
-
+.
 .TP
 .B \-list
 Lists all the parameters supported by Xvnc.
-
+.
 .TP
 .B \-get \fIXvnc-param\fP
 Prints the current value of the given Xvnc parameter.
-
+.
 .TP
 .B \-desc \fIXvnc-param\fP
 Prints a short description of the given Xvnc parameter.
@@ -102,11 +99,11 @@ Other valid forms are \fIparam\fP\fB=\fP\fIvalue\fP -\fIparam\fP=\fIvalue\fP
 .TP
 .B \-display \fIXdisplay\fP
 Specifies the Xvnc server to control.
-
+.
 .TP
 .B \-nowin
 When run as a "helper" app, don't put up a window.
-
+.
 .TP
 .B \-iconic
 When run as a "helper" app, make the window iconified at startup.
@@ -114,14 +111,16 @@ When run as a "helper" app, make the window iconified at startup.
 .SH SEE ALSO
 .BR vncpasswd (1),
 .BR vncviewer (1),
-.BR vncserver (1),
-.BR Xvnc (1)
+.BR Xvnc (1),
+.BR vncsession (8)
 .br
-http://www.realvnc.com
+https://www.tigervnc.org
 
 .SH AUTHOR
-Tristan Richardson, RealVNC Ltd.
+Tristan Richardson, RealVNC Ltd. and others.
 
-VNC was originally developed by the RealVNC team while at Olivetti Research Ltd
-/ AT&T Laboratories Cambridge.  It is now being maintained by RealVNC Ltd.  See
-http://www.realvnc.com for details.
+VNC was originally developed by the RealVNC team while at Olivetti
+Research Ltd / AT&T Laboratories Cambridge.  TightVNC additions were
+implemented by Constantin Kaplinsky. Many other people have since
+participated in development, testing and support. This manual is part
+of the TigerVNC software suite.

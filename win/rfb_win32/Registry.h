@@ -22,7 +22,6 @@
 #ifndef __RFB_WIN32_REGISTRY_H__
 #define __RFB_WIN32_REGISTRY_H__
 
-#include <windows.h>
 #include <rfb_win32/Security.h>
 #include <rfb/util.h>
 
@@ -71,15 +70,15 @@ namespace rfb {
 
       void setExpandString(const TCHAR* valname, const TCHAR* s) const;
       void setString(const TCHAR* valname, const TCHAR* s) const;
-      void setBinary(const TCHAR* valname, const void* data, int length) const;
+      void setBinary(const TCHAR* valname, const void* data, size_t length) const;
       void setInt(const TCHAR* valname, int i) const;
       void setBool(const TCHAR* valname, bool b) const;
 
       TCHAR* getString(const TCHAR* valname) const;
       TCHAR* getString(const TCHAR* valname, const TCHAR* def) const;
 
-      void getBinary(const TCHAR* valname, void** data, int* length) const;
-      void getBinary(const TCHAR* valname, void** data, int* length, void* def, int deflength) const;
+      void getBinary(const TCHAR* valname, void** data, size_t* length) const;
+      void getBinary(const TCHAR* valname, void** data, size_t* length, void* def, size_t deflength) const;
 
       int getInt(const TCHAR* valname) const;
       int getInt(const TCHAR* valname, int def) const;

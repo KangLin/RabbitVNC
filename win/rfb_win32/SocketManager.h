@@ -48,7 +48,7 @@ namespace rfb {
       class AddressChangeNotifier {
       public:
         virtual ~AddressChangeNotifier() {}
-        virtual void processAddressChange(network::SocketListener* sl) = 0;
+        virtual void processAddressChange() = 0;
       };
 
       // Add a listening socket.  Incoming connections will be added to the supplied
@@ -65,6 +65,9 @@ namespace rfb {
       // the SocketServer.
       void addSocket(network::Socket* sock_, network::SocketServer* srvr, bool outgoing=true);
 
+      bool getDisable(network::SocketServer* srvr);
+      void setDisable(network::SocketServer* srvr, bool disable);
+
     protected:
       virtual int checkTimeouts();
       virtual void processEvent(HANDLE event);
@@ -78,6 +81,7 @@ namespace rfb {
         network::SocketListener* sock;
         network::SocketServer* server;
         AddressChangeNotifier* notifier;
+        bool disable;
       };
       std::map<HANDLE, ListenInfo> listeners;
       std::map<HANDLE, ConnInfo> connections;

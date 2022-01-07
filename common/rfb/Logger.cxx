@@ -21,56 +21,13 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
-#ifdef WIN32
-#define strcasecmp _stricmp
-#define vsnprintf _vsnprintf
-#define HAVE_VSNPRINTF
-#endif
 
+#include <os/os.h>
 #include <rfb/Logger.h>
 #include <rfb/LogWriter.h>
 #include <rfb/util.h>
-#include <rfb/Threading.h>
 
 using namespace rfb;
-
-/*
-#ifndef HAVE_VSNPRINTF
-#ifdef __RFB_THREADING_IMPL
-static Mutex fpLock;
-#endif
-static FILE* fp = 0;
-int vsnprintf(char *str, size_t n, const char *format, va_list ap)
-{
-  va_list ap_new;
-  int len, written;
-
-  str[0] = 0;
-  if (!fp) {
-    // Safely create a FILE* for /dev/null if there isn't already one
-#ifdef __RFB_THREADING_IMPL
-    Lock l(fpLock);
-#endif
-    if (!fp)
-      fp = fopen("/dev/null","w");
-    if (!fp) return 0;
-  }
-   va_copy(ap_new, ap);
-  len = vfprintf(fp, format, ap_new);
-  va_end(ap_new);
-
-  if (len <= 0) return 0;
-
-  CharArray s(len+1);
-  vsprintf(s.buf, format, ap);
-
-  written = __rfbmin(len, (int)n-1);
-  memcpy(str, s.buf, written);
-  str[written] = 0;
-  return len;
-}
-#endif
-*/
 
 Logger* Logger::loggers = 0;
 
@@ -91,7 +48,16 @@ void Logger::write(int level, const char *logname, const char* format,
   char buf1[4096];
   vsnprintf(buf1, sizeof(buf1)-1, format, ap);
   buf1[sizeof(buf1)-1] = 0;
-  write(level, logname, buf1);
+  char *buf = buf1;
+  while (true) {
+    char *end = strchr(buf, '\n');
+    if (end)
+      *end = '\0';
+    write(level, logname, buf);
+    if (!end)
+      break;
+    buf = end + 1;
+  }
 }
 
 void
@@ -121,5 +87,3 @@ Logger::listLoggers() {
     current = current->m_next;
   }
 }
-
-

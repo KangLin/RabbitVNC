@@ -21,8 +21,6 @@
 // Tracks updated regions and a region-copy event, too
 //
 
-#include <assert.h>
-
 #include <rfb/UpdateTracker.h>
 #include <rfb/LogWriter.h>
 
@@ -62,19 +60,10 @@ void ClippingUpdateTracker::add_copied(const Region &dest, const Point &delta) {
 
 // SimpleUpdateTracker
 
-SimpleUpdateTracker::SimpleUpdateTracker(bool use_copyrect) {
-  copy_enabled = use_copyrect;
+SimpleUpdateTracker::SimpleUpdateTracker() {
 }
 
 SimpleUpdateTracker::~SimpleUpdateTracker() {
-}
-
-void SimpleUpdateTracker::enable_copyrect(bool enable) {
-  if (!enable && copy_enabled) {
-    add_changed(copied);
-    copied.clear();
-  }
-  copy_enabled=enable;
 }
 
 void SimpleUpdateTracker::add_changed(const Region &region) {
@@ -82,12 +71,6 @@ void SimpleUpdateTracker::add_changed(const Region &region) {
 }
 
 void SimpleUpdateTracker::add_copied(const Region &dest, const Point &delta) {
-  // Do we support copyrect?
-  if (!copy_enabled) {
-    add_changed(dest);
-    return;
-  }
-
   // Is there anything to do?
   if (dest.is_empty()) return;
 

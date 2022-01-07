@@ -1,4 +1,5 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
+ * Copyright 2009-2019 Pierre Ossman for Cendio AB
  * 
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,27 +31,46 @@ namespace rfb {
 
   class SMsgReader {
   public:
+    SMsgReader(SMsgHandler* handler, rdr::InStream* is);
     virtual ~SMsgReader();
 
-    virtual void readClientInit()=0;
+    bool readClientInit();
 
     // readMsg() reads a message, calling the handler as appropriate.
-    virtual void readMsg()=0;
+    bool readMsg();
 
     rdr::InStream* getInStream() { return is; }
 
   protected:
-    virtual void readSetPixelFormat();
-    virtual void readSetEncodings();
-    virtual void readFramebufferUpdateRequest();
-    virtual void readKeyEvent();
-    virtual void readPointerEvent();
-    virtual void readClientCutText();
+    bool readSetPixelFormat();
+    bool readSetEncodings();
+    bool readSetDesktopSize();
 
-    SMsgReader(SMsgHandler* handler, rdr::InStream* is);
+    bool readFramebufferUpdateRequest();
+    bool readEnableContinuousUpdates();
 
+    bool readFence();
+
+    bool readKeyEvent();
+    bool readPointerEvent();
+    bool readClientCutText();
+    bool readExtendedClipboard(rdr::S32 len);
+
+    bool readQEMUMessage();
+    bool readQEMUKeyEvent();
+
+  private:
     SMsgHandler* handler;
     rdr::InStream* is;
+
+    enum stateEnum {
+      MSGSTATE_IDLE,
+      MSGSTATE_MESSAGE,
+    };
+
+    stateEnum state;
+
+    rdr::U8 currentMsgType;
   };
 }
 #endif

@@ -19,10 +19,8 @@
 // -=- LogWriter.cxx - client-side logging interface
 
 #include <string.h>
-#ifdef WIN32
-#define strcasecmp _stricmp
-#endif
 
+#include <os/os.h>
 #include <rfb/LogWriter.h>
 #include <rfb/Configuration.h>
 #include <rfb/util.h>
@@ -129,9 +127,4 @@ bool LogParameter::setParam(const char* v) {
       return false;
   }
   return true;
-}
-
-void LogParameter::setDefault(const char* d) {
-  def_value = d;
-  setParam(def_value);
 }

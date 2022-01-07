@@ -1,4 +1,5 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
+ * Copyright 2009-2019 Pierre Ossman for Cendio AB
  * 
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,23 +17,36 @@
  * USA.
  */
 #include <stdio.h>
+
 #include <rdr/OutStream.h>
+#include <rdr/MemOutStream.h>
+#include <rdr/ZlibOutStream.h>
+
 #include <rfb/msgTypes.h>
+#include <rfb/fenceTypes.h>
+#include <rfb/qemuTypes.h>
+#include <rfb/clipboardTypes.h>
+#include <rfb/Exception.h>
 #include <rfb/PixelFormat.h>
 #include <rfb/Rect.h>
-#include <rfb/ConnParams.h>
-#include <rfb/Decoder.h>
+#include <rfb/ServerParams.h>
 #include <rfb/CMsgWriter.h>
 
 using namespace rfb;
 
-CMsgWriter::CMsgWriter(ConnParams* cp_, rdr::OutStream* os_)
-  : cp(cp_), os(os_)
+CMsgWriter::CMsgWriter(ServerParams* server_, rdr::OutStream* os_)
+  : server(server_), os(os_)
 {
 }
 
 CMsgWriter::~CMsgWriter()
 {
+}
+
+void CMsgWriter::writeClientInit(bool shared)
+{
+  os->writeU8(shared);
+  endMsg();
 }
 
 void CMsgWriter::writeSetPixelFormat(const PixelFormat& pf)
@@ -43,41 +57,45 @@ void CMsgWriter::writeSetPixelFormat(const PixelFormat& pf)
   endMsg();
 }
 
-void CMsgWriter::writeSetEncodings(int nEncodings, rdr::U32* encodings)
+void CMsgWriter::writeSetEncodings(const std::list<rdr::U32> encodings)
 {
+  std::list<rdr::U32>::const_iterator iter;
   startMsg(msgTypeSetEncodings);
-  os->skip(1);
-  os->writeU16(nEncodings);
-  for (int i = 0; i < nEncodings; i++)
-    os->writeU32(encodings[i]);
+  os->pad(1);
+  os->writeU16(encodings.size());
+  for (iter = encodings.begin(); iter != encodings.end(); ++iter)
+    os->writeU32(*iter);
   endMsg();
 }
 
-// Ask for encodings based on which decoders are supported.  Assumes higher
-// encoding numbers are more desirable.
-
-void CMsgWriter::writeSetEncodings(int preferredEncoding, bool useCopyRect)
+void CMsgWriter::writeSetDesktopSize(int width, int height,
+                                     const ScreenSet& layout)
 {
-  int nEncodings = 0;
-  rdr::U32 encodings[encodingMax+2];
-  if (cp->supportsLocalCursor)
-    encodings[nEncodings++] = pseudoEncodingCursor;
-  if (cp->supportsDesktopResize)
-    encodings[nEncodings++] = pseudoEncodingDesktopSize;
-  if (Decoder::supported(preferredEncoding)) {
-    encodings[nEncodings++] = preferredEncoding;
+  if (!server->supportsSetDesktopSize)
+    throw Exception("Server does not support SetDesktopSize");
+
+  startMsg(msgTypeSetDesktopSize);
+  os->pad(1);
+
+  os->writeU16(width);
+  os->writeU16(height);
+
+  os->writeU8(layout.num_screens());
+  os->pad(1);
+
+  ScreenSet::const_iterator iter;
+  for (iter = layout.begin();iter != layout.end();++iter) {
+    os->writeU32(iter->id);
+    os->writeU16(iter->dimensions.tl.x);
+    os->writeU16(iter->dimensions.tl.y);
+    os->writeU16(iter->dimensions.width());
+    os->writeU16(iter->dimensions.height());
+    os->writeU32(iter->flags);
   }
-  if (useCopyRect) {
-    encodings[nEncodings++] = encodingCopyRect;
-  }
-  for (int i = encodingMax; i >= 0; i--) {
-    if (i != preferredEncoding && Decoder::supported(i)) {
-      encodings[nEncodings++] = i;
-    }
-  }
-  writeSetEncodings(nEncodings, encodings);
+
+  endMsg();
 }
-  
+
 void CMsgWriter::writeFramebufferUpdateRequest(const Rect& r, bool incremental)
 {
   startMsg(msgTypeFramebufferUpdateRequest);
@@ -89,24 +107,74 @@ void CMsgWriter::writeFramebufferUpdateRequest(const Rect& r, bool incremental)
   endMsg();
 }
 
-
-void CMsgWriter::keyEvent(rdr::U32 key, bool down)
+void CMsgWriter::writeEnableContinuousUpdates(bool enable,
+                                              int x, int y, int w, int h)
 {
-  startMsg(msgTypeKeyEvent);
-  os->writeU8(down);
-  os->pad(2);
-  os->writeU32(key);
+  if (!server->supportsContinuousUpdates)
+    throw Exception("Server does not support continuous updates");
+
+  startMsg(msgTypeEnableContinuousUpdates);
+
+  os->writeU8(!!enable);
+
+  os->writeU16(x);
+  os->writeU16(y);
+  os->writeU16(w);
+  os->writeU16(h);
+
   endMsg();
 }
 
+void CMsgWriter::writeFence(rdr::U32 flags, unsigned len, const char data[])
+{
+  if (!server->supportsFence)
+    throw Exception("Server does not support fences");
+  if (len > 64)
+    throw Exception("Too large fence payload");
+  if ((flags & ~fenceFlagsSupported) != 0)
+    throw Exception("Unknown fence flags");
 
-void CMsgWriter::pointerEvent(const Point& pos, int buttonMask)
+  startMsg(msgTypeClientFence);
+  os->pad(3);
+
+  os->writeU32(flags);
+
+  os->writeU8(len);
+  os->writeBytes(data, len);
+
+  endMsg();
+}
+
+void CMsgWriter::writeKeyEvent(rdr::U32 keysym, rdr::U32 keycode, bool down)
+{
+  if (!server->supportsQEMUKeyEvent || !keycode) {
+    /* This event isn't meaningful without a valid keysym */
+    if (!keysym)
+      return;
+
+    startMsg(msgTypeKeyEvent);
+    os->writeU8(down);
+    os->pad(2);
+    os->writeU32(keysym);
+    endMsg();
+  } else {
+    startMsg(msgTypeQEMUClientMessage);
+    os->writeU8(qemuExtendedKeyEvent);
+    os->writeU16(down);
+    os->writeU32(keysym);
+    os->writeU32(keycode);
+    endMsg();
+  }
+}
+
+
+void CMsgWriter::writePointerEvent(const Point& pos, int buttonMask)
 {
   Point p(pos);
   if (p.x < 0) p.x = 0;
   if (p.y < 0) p.y = 0;
-  if (p.x >= cp->width) p.x = cp->width - 1;
-  if (p.y >= cp->height) p.y = cp->height - 1;
+  if (p.x >= server->width()) p.x = server->width() - 1;
+  if (p.y >= server->height()) p.y = server->height() - 1;
 
   startMsg(msgTypePointerEvent);
   os->writeU8(buttonMask);
@@ -116,11 +184,125 @@ void CMsgWriter::pointerEvent(const Point& pos, int buttonMask)
 }
 
 
-void CMsgWriter::clientCutText(const char* str, int len)
+void CMsgWriter::writeClientCutText(const char* str)
 {
+  size_t len;
+
+  if (strchr(str, '\r') != NULL)
+    throw Exception("Invalid carriage return in clipboard data");
+
+  len = strlen(str);
   startMsg(msgTypeClientCutText);
   os->pad(3);
   os->writeU32(len);
   os->writeBytes(str, len);
   endMsg();
+}
+
+void CMsgWriter::writeClipboardCaps(rdr::U32 caps,
+                                    const rdr::U32* lengths)
+{
+  size_t i, count;
+
+  if (!(server->clipboardFlags() & clipboardCaps))
+    throw Exception("Server does not support clipboard \"caps\" action");
+
+  count = 0;
+  for (i = 0;i < 16;i++) {
+    if (caps & (1 << i))
+      count++;
+  }
+
+  startMsg(msgTypeClientCutText);
+  os->pad(3);
+  os->writeS32(-(4 + 4 * count));
+
+  os->writeU32(caps | clipboardCaps);
+
+  count = 0;
+  for (i = 0;i < 16;i++) {
+    if (caps & (1 << i))
+      os->writeU32(lengths[count++]);
+  }
+
+  endMsg();
+}
+
+void CMsgWriter::writeClipboardRequest(rdr::U32 flags)
+{
+  if (!(server->clipboardFlags() & clipboardRequest))
+    throw Exception("Server does not support clipboard \"request\" action");
+
+  startMsg(msgTypeClientCutText);
+  os->pad(3);
+  os->writeS32(-4);
+  os->writeU32(flags | clipboardRequest);
+  endMsg();
+}
+
+void CMsgWriter::writeClipboardPeek(rdr::U32 flags)
+{
+  if (!(server->clipboardFlags() & clipboardPeek))
+    throw Exception("Server does not support clipboard \"peek\" action");
+
+  startMsg(msgTypeClientCutText);
+  os->pad(3);
+  os->writeS32(-4);
+  os->writeU32(flags | clipboardPeek);
+  endMsg();
+}
+
+void CMsgWriter::writeClipboardNotify(rdr::U32 flags)
+{
+  if (!(server->clipboardFlags() & clipboardNotify))
+    throw Exception("Server does not support clipboard \"notify\" action");
+
+  startMsg(msgTypeClientCutText);
+  os->pad(3);
+  os->writeS32(-4);
+  os->writeU32(flags | clipboardNotify);
+  endMsg();
+}
+
+void CMsgWriter::writeClipboardProvide(rdr::U32 flags,
+                                      const size_t* lengths,
+                                      const rdr::U8* const* data)
+{
+  rdr::MemOutStream mos;
+  rdr::ZlibOutStream zos;
+
+  int i, count;
+
+  if (!(server->clipboardFlags() & clipboardProvide))
+    throw Exception("Server does not support clipboard \"provide\" action");
+
+  zos.setUnderlying(&mos);
+
+  count = 0;
+  for (i = 0;i < 16;i++) {
+    if (!(flags & (1 << i)))
+      continue;
+    zos.writeU32(lengths[count]);
+    zos.writeBytes(data[count], lengths[count]);
+    count++;
+  }
+
+  zos.flush();
+
+  startMsg(msgTypeClientCutText);
+  os->pad(3);
+  os->writeS32(-(4 + mos.length()));
+  os->writeU32(flags | clipboardProvide);
+  os->writeBytes(mos.data(), mos.length());
+  endMsg();
+}
+
+void CMsgWriter::startMsg(int type)
+{
+  os->writeU8(type);
+}
+
+void CMsgWriter::endMsg()
+{
+  os->flush();
 }

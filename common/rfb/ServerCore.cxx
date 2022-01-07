@@ -29,16 +29,28 @@ rfb::IntParameter rfb::Server::idleTimeout
 ("IdleTimeout",
  "The number of seconds after which an idle VNC connection will be dropped "
  "(zero means no timeout)",
- 3600, 0);
-rfb::IntParameter rfb::Server::clientWaitTimeMillis
-("ClientWaitTimeMillis",
- "The number of milliseconds to wait for a client which is no longer "
- "responding",
- 20000, 0);
-rfb::BoolParameter rfb::Server::compareFB
+ 0, 0);
+rfb::IntParameter rfb::Server::maxDisconnectionTime
+("MaxDisconnectionTime",
+ "Terminate when no client has been connected for s seconds", 
+ 0, 0);
+rfb::IntParameter rfb::Server::maxConnectionTime
+("MaxConnectionTime",
+ "Terminate when a client has been connected for s seconds", 
+ 0, 0);
+rfb::IntParameter rfb::Server::maxIdleTime
+("MaxIdleTime",
+ "Terminate after s seconds of user inactivity", 
+ 0, 0);
+rfb::IntParameter rfb::Server::compareFB
 ("CompareFB",
- "Perform pixel comparison on framebuffer to reduce unnecessary updates",
- true);
+ "Perform pixel comparison on framebuffer to reduce unnecessary updates "
+ "(0: never, 1: always, 2: auto)",
+ 2);
+rfb::IntParameter rfb::Server::frameRate
+("FrameRate",
+ "The maximum number of updates per second sent to each client",
+ 60);
 rfb::BoolParameter rfb::Server::protocol3_3
 ("Protocol3.3",
  "Always use protocol version 3.3 for backwards compatibility with "
@@ -75,6 +87,10 @@ rfb::BoolParameter rfb::Server::acceptCutText
 rfb::BoolParameter rfb::Server::sendCutText
 ("SendCutText",
  "Send clipboard changes to clients.",
+ true);
+rfb::BoolParameter rfb::Server::acceptSetDesktopSize
+("AcceptSetDesktopSize",
+ "Accept set desktop size events from clients.",
  true);
 rfb::BoolParameter rfb::Server::queryConnect
 ("QueryConnect",

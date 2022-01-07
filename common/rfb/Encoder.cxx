@@ -1,4 +1,5 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
+ * Copyright 2014 Pierre Ossman for Cendio AB
  * 
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,61 +16,68 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
  * USA.
  */
-#include <stdio.h>
-#include <rfb/Exception.h>
+
 #include <rfb/Encoder.h>
-#include <rfb/RawEncoder.h>
-#include <rfb/RREEncoder.h>
-#include <rfb/HextileEncoder.h>
-#include <rfb/ZRLEEncoder.h>
+#include <rfb/PixelBuffer.h>
+#include <rfb/Palette.h>
 
 using namespace rfb;
+
+Encoder::Encoder(SConnection *conn_, int encoding_,
+                 enum EncoderFlags flags_,
+                 unsigned int maxPaletteSize_, int losslessQuality_) :
+  encoding(encoding_), flags(flags_),
+  maxPaletteSize(maxPaletteSize_), losslessQuality(losslessQuality_),
+  conn(conn_)
+{
+}
 
 Encoder::~Encoder()
 {
 }
 
-EncoderCreateFnType Encoder::createFns[encodingMax+1] = { 0 };
-
-bool Encoder::supported(unsigned int encoding)
+void Encoder::writeSolidRect(int width, int height,
+                             const PixelFormat& pf, const rdr::U8* colour)
 {
-  return encoding <= encodingMax && createFns[encoding];
+  ManagedPixelBuffer buffer(pf, width, height);
+
+  Palette palette;
+  rdr::U32 palcol;
+
+  buffer.fillRect(buffer.getRect(), colour);
+
+  palcol = 0;
+  memcpy(&palcol, colour, pf.bpp/8);
+  palette.insert(palcol, 1);
+
+  writeRect(&buffer, palette);
 }
 
-Encoder* Encoder::createEncoder(unsigned int encoding, SMsgWriter* writer)
+void Encoder::writeSolidRect(const PixelBuffer* pb, const Palette& palette)
 {
-  if (encoding <= encodingMax && createFns[encoding])
-    return (*createFns[encoding])(writer);
-  return 0;
-}
+  rdr::U32 col32;
+  rdr::U16 col16;
+  rdr::U8 col8;
 
-void Encoder::registerEncoder(unsigned int encoding,
-                              EncoderCreateFnType createFn)
-{
-  if (encoding > encodingMax)
-    throw Exception("Encoder::registerEncoder: encoding out of range");
+  rdr::U8* buffer;
 
-  if (createFns[encoding])
-    fprintf(stderr,"Replacing existing encoder for encoding %s (%d)\n",
-            encodingName(encoding), encoding);
-  createFns[encoding] = createFn;
-}
+  assert(palette.size() == 1);
 
-void Encoder::unregisterEncoder(unsigned int encoding)
-{
-  if (encoding > encodingMax)
-    throw Exception("Encoder::unregisterEncoder: encoding out of range");
-  createFns[encoding] = 0;
-}
+  // The Palette relies on implicit up and down conversion
+  switch (pb->getPF().bpp) {
+  case 32:
+    col32 = (rdr::U32)palette.getColour(0);
+    buffer = (rdr::U8*)&col32;
+    break;
+  case 16:
+    col16 = (rdr::U16)palette.getColour(0);
+    buffer = (rdr::U8*)&col16;
+    break;
+  default:
+    col8 = (rdr::U8)palette.getColour(0);
+    buffer = (rdr::U8*)&col8;
+    break;
+  }
 
-int EncoderInit::count = 0;
-
-EncoderInit::EncoderInit()
-{
-  if (count++ != 0) return;
-
-  Encoder::registerEncoder(encodingRaw, RawEncoder::create);
-  Encoder::registerEncoder(encodingRRE, RREEncoder::create);
-  Encoder::registerEncoder(encodingHextile, HextileEncoder::create);
-  Encoder::registerEncoder(encodingZRLE, ZRLEEncoder::create);
+  writeSolidRect(pb->width(), pb->height(), pb->getPF(), buffer);
 }

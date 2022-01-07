@@ -1,4 +1,5 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
+ * Copyright 2014 Pierre Ossman for Cendio AB
  * 
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,15 +29,11 @@ static LogWriter vlog("DIBSectionBuffer");
 
 
 DIBSectionBuffer::DIBSectionBuffer(HWND window_)
-  : bitmap(0), device(0), window(window_) {
-  memset(&format, 0, sizeof(format));
-  memset(palette, 0, sizeof(palette));
+  : bitmap(0), window(window_), device(0) {
 }
 
 DIBSectionBuffer::DIBSectionBuffer(HDC device_)
   : bitmap(0), window(0), device(device_) {
-  memset(&format, 0, sizeof(format));
-  memset(palette, 0, sizeof(palette));
 }
 
 DIBSectionBuffer::~DIBSectionBuffer() {
@@ -45,74 +42,34 @@ DIBSectionBuffer::~DIBSectionBuffer() {
 }
 
 
-void DIBSectionBuffer::setPF(const PixelFormat& pf) {
-  if (memcmp(&getPF(), &pf, sizeof(pf)) == 0) {
-    vlog.debug("pixel format unchanged by setPF()");
-    return;
-  }
-  format = pf;
-  recreateBuffer();
-  if ((pf.bpp <= 8) && pf.trueColour) {
-    vlog.info("creating %d-bit TrueColour palette", pf.depth);
-    for (int i=0; i < (1<<(pf.depth)); i++) {
-      palette[i].b = ((((i >> pf.blueShift) & pf.blueMax) * 65535) + pf.blueMax/2) / pf.blueMax;
-      palette[i].g = ((((i >> pf.greenShift) & pf.greenMax) * 65535) + pf.greenMax/2) / pf.greenMax;
-      palette[i].r = ((((i >> pf.redShift) & pf.redMax) * 65535) + pf.redMax/2) / pf.redMax;
-    }
-    refreshPalette();
-  }
-}
-
-void DIBSectionBuffer::setSize(int w, int h) {
-  if (width_ == w && height_ == h) {
-    vlog.debug("size unchanged by setSize()");
-    return;
-  }
-  width_ = w;
-  height_ = h;
-  recreateBuffer();
-}
-
-
-// * copyPaletteToDIB MUST NEVER be called on a truecolour DIB! *
-
-void copyPaletteToDIB(Colour palette[256], HDC wndDC, HBITMAP dib) {
-  BitmapDC dibDC(wndDC, dib);
-  RGBQUAD rgb[256];
-  for (unsigned int i=0;i<256;i++) {
-    rgb[i].rgbRed = palette[i].r >> 8;
-    rgb[i].rgbGreen = palette[i].g >> 8;
-    rgb[i].rgbBlue = palette[i].b >> 8;
-  }
-  if (!SetDIBColorTable(dibDC, 0, 256, (RGBQUAD*) rgb))
-    throw rdr::SystemException("unable to SetDIBColorTable", GetLastError());
-}
-
 inline void initMaxAndShift(DWORD mask, int* max, int* shift) {
   for ((*shift) = 0; (mask & 1) == 0; (*shift)++) mask >>= 1;
   (*max) = (rdr::U16)mask;
 }
 
-void DIBSectionBuffer::recreateBuffer() {
+void DIBSectionBuffer::initBuffer(const PixelFormat& pf, int w, int h) {
   HBITMAP new_bitmap = 0;
   rdr::U8* new_data = 0;
 
-  if (width_ && height_ && (format.depth != 0)) {
+  if (!pf.trueColour)
+    throw rfb::Exception("palette format not supported");
+
+  format = pf;
+
+  if (w && h && (format.depth != 0)) {
     BitmapInfo bi;
     memset(&bi, 0, sizeof(bi));
-    // *** wrong?
-    UINT iUsage = format.trueColour ? DIB_RGB_COLORS : DIB_PAL_COLORS;
-    // ***
+    UINT iUsage = DIB_RGB_COLORS;
     bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     bi.bmiHeader.biBitCount = format.bpp;
-    bi.bmiHeader.biSizeImage = (format.bpp / 8) * width_ * height_;
+    bi.bmiHeader.biSizeImage = (format.bpp / 8) * w * h;
     bi.bmiHeader.biPlanes = 1;
-    bi.bmiHeader.biWidth = width_;
-    bi.bmiHeader.biHeight = -height_;
+    bi.bmiHeader.biWidth = w;
+    bi.bmiHeader.biHeight = -h;
     bi.bmiHeader.biCompression = (format.bpp > 8) ? BI_BITFIELDS : BI_RGB;
-    bi.mask.red = format.redMax << format.redShift;
-    bi.mask.green = format.greenMax << format.greenShift;
-    bi.mask.blue = format.blueMax << format.blueShift;
+    bi.mask.red = format.pixelFromRGB((rdr::U16)~0, 0, 0);
+    bi.mask.green = format.pixelFromRGB(0, (rdr::U16)~0, 0);
+    bi.mask.blue = format.pixelFromRGB(0, 0, (rdr::U16)~0);
 
     // Create a DIBSection to draw into
     if (device)
@@ -137,18 +94,14 @@ void DIBSectionBuffer::recreateBuffer() {
 
     // Copy the contents across
     if (device) {
-      if (format.bpp <= 8)
-        copyPaletteToDIB(palette, device, new_bitmap);
       BitmapDC src_dev(device, bitmap);
       BitmapDC dest_dev(device, new_bitmap);
-      BitBlt(dest_dev, 0, 0, width_, height_, src_dev, 0, 0, SRCCOPY);
+      BitBlt(dest_dev, 0, 0, w, h, src_dev, 0, 0, SRCCOPY);
     } else {
       WindowDC wndDC(window);
-      if (format.bpp <= 8)
-        copyPaletteToDIB(palette, wndDC, new_bitmap);
       BitmapDC src_dev(wndDC, bitmap);
       BitmapDC dest_dev(wndDC, new_bitmap);
-      BitBlt(dest_dev, 0, 0, width_, height_, src_dev, 0, 0, SRCCOPY);
+      BitBlt(dest_dev, 0, 0, w, h, src_dev, 0, 0, SRCCOPY);
     }
   }
   
@@ -156,13 +109,17 @@ void DIBSectionBuffer::recreateBuffer() {
     // Delete the old bitmap
     DeleteObject(bitmap);
     bitmap = 0;
-    data = 0;
+    setBuffer(0, 0, NULL, 0);
   }
 
   if (new_bitmap) {
+    int bpp, depth;
+    int redMax, greenMax, blueMax;
+    int redShift, greenShift, blueShift;
+    int new_stride;
+
     // Set up the new bitmap
     bitmap = new_bitmap;
-    data = new_data;
 
     // Determine the *actual* DIBSection format
     DIBSECTION ds;
@@ -171,52 +128,36 @@ void DIBSectionBuffer::recreateBuffer() {
 
     // Correct the "stride" of the DIB
     // *** This code DWORD aligns each row - is that right???
-    stride = width_;
-    int bytesPerRow = stride * format.bpp/8;
+    new_stride = w;
+    int bytesPerRow = new_stride * format.bpp/8;
     if (bytesPerRow % 4) {
       bytesPerRow += 4 - (bytesPerRow % 4);
-      stride = (bytesPerRow * 8) / format.bpp;
-      vlog.info("adjusting DIB stride: %d to %d", width_, stride);
+      new_stride = (bytesPerRow * 8) / format.bpp;
+      vlog.info("adjusting DIB stride: %d to %d", w, new_stride);
     }
+
+    setBuffer(w, h, new_data, new_stride);
 
     // Calculate the PixelFormat for the DIB
-    format.bigEndian = 0;
-    format.bpp = format.depth = ds.dsBm.bmBitsPixel;
-    format.trueColour = format.trueColour || format.bpp > 8;
-    if (format.bpp > 8) {
+    bpp = depth = ds.dsBm.bmBitsPixel;
 
-      // Get the truecolour format used by the DIBSection
-      initMaxAndShift(ds.dsBitfields[0], &format.redMax, &format.redShift);
-      initMaxAndShift(ds.dsBitfields[1], &format.greenMax, &format.greenShift);
-      initMaxAndShift(ds.dsBitfields[2], &format.blueMax, &format.blueShift);
+    // Get the truecolour format used by the DIBSection
+    initMaxAndShift(ds.dsBitfields[0], &redMax, &redShift);
+    initMaxAndShift(ds.dsBitfields[1], &greenMax, &greenShift);
+    initMaxAndShift(ds.dsBitfields[2], &blueMax, &blueShift);
 
-      // Calculate the effective depth
-      format.depth = 0;
-      Pixel bits = ds.dsBitfields[0] | ds.dsBitfields[1] | ds.dsBitfields[2];
-      while (bits) {
-        format.depth++;
-        bits = bits >> 1;
-      }
-      if (format.depth > format.bpp)
-        throw Exception("Bad DIBSection format (depth exceeds bpp)");
-    } else {
-      // Set the DIBSection's palette
-      refreshPalette();
+    // Calculate the effective depth
+    depth = 0;
+    Pixel bits = ds.dsBitfields[0] | ds.dsBitfields[1] | ds.dsBitfields[2];
+    while (bits) {
+      depth++;
+      bits = bits >> 1;
     }
+    if (depth > bpp)
+      throw Exception("Bad DIBSection format (depth exceeds bpp)");
 
+    format = PixelFormat(bpp, depth, false, true,
+                         redMax, greenMax, blueMax,
+                         redShift, greenShift, blueShift);
   }
 }
-
-void DIBSectionBuffer::refreshPalette() {
-  if (format.bpp > 8) {
-    vlog.error("refresh palette called for truecolour DIB");
-    return;
-  }
-  vlog.debug("refreshing palette");
-  if (device)
-    copyPaletteToDIB(palette, device, bitmap);
-  else
-    copyPaletteToDIB(palette, WindowDC(window), bitmap);
-}
-
-

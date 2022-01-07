@@ -1,4 +1,6 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
+ * Copyright 2004-2005 Cendio AB.
+ * Copyright 2017 Peter Astrand <astrand@cendio.se> for Cendio AB
  * 
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,30 +23,16 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <string.h>
-#include <assert.h>
-#ifdef WIN32
-#define strcasecmp _stricmp
-#define strncasecmp _strnicmp
-#endif
+
+#include <os/os.h>
+#include <os/Mutex.h>
 
 #include <rfb/util.h>
 #include <rfb/Configuration.h>
 #include <rfb/LogWriter.h>
 #include <rfb/Exception.h>
-#include <rfb/Threading.h>
 
-#ifdef __RFB_THREADING_IMPL
-// On platforms that support Threading, we use Locks to make getData safe
-#define LOCK_CONFIG Lock l(*configLock())
-rfb::Mutex* configLock_ = 0;
-static rfb::Mutex* configLock() {
-  if (!configLock_)
-    configLock_ = new rfb::Mutex;
-  return configLock_;
-}
-#else
-#define LOCK_CONFIG
-#endif
+#define LOCK_CONFIG os::AutoMutex a(mutex)
 
 #include <rdr/HexOutStream.h>
 #include <rdr/HexInStream.h>
@@ -54,41 +42,30 @@ using namespace rfb;
 static LogWriter vlog("Config");
 
 
-// -=- The Global Configuration object
+// -=- The Global/server/viewer Configuration objects
 Configuration* Configuration::global_ = 0;
+Configuration* Configuration::server_ = 0;
+Configuration* Configuration::viewer_ = 0;
+
 Configuration* Configuration::global() {
   if (!global_)
     global_ = new Configuration("Global");
   return global_;
 }
 
+Configuration* Configuration::server() {
+  if (!server_)
+    server_ = new Configuration("Server");
+  return server_;
+}
+
+Configuration* Configuration::viewer() {
+  if (!viewer_)
+    viewer_ = new Configuration("Viewer");
+  return viewer_;
+}
 
 // -=- Configuration implementation
-
-Configuration::Configuration(const char* name_, Configuration* attachToGroup) 
-: name(strDup(name_)), head(0), _next(0) {
-  if (attachToGroup) {
-    _next = attachToGroup->_next;
-    attachToGroup->_next = this;
-  }
-}
-
-Configuration& Configuration::operator=(const Configuration& src) {
-  VoidParameter* current = head;
-  while (current) {
-    VoidParameter* srcParam = ((Configuration&)src).get(current->getName());
-    if (srcParam) {
-      current->immutable = false;
-      CharArray value(srcParam->getValueStr());
-      vlog.debug("operator=(%s, %s)", current->getName(), value.buf);
-      current->setParam(value.buf);
-    }
-    current = current->_next;
-  }
-  if (_next)
-    *_next=src;
-  return *this;
-}
 
 bool Configuration::set(const char* n, const char* v, bool immutable) {
   return set(n, strlen(n), v, immutable);
@@ -103,8 +80,8 @@ bool Configuration::set(const char* name, int len,
         strncasecmp(current->getName(), name, len) == 0)
     {
       bool b = current->setParam(val);
-      if (b && immutable)
-        current->setImmutable();
+      if (b && immutable) 
+	current->setImmutable();
       return b;
     }
     current = current->_next;
@@ -127,8 +104,8 @@ bool Configuration::set(const char* config, bool immutable) {
     while (current) {
       if (strcasecmp(current->getName(), config) == 0) {
         bool b = current->setParam();
-        if (b && immutable)
-          current->setImmutable();
+        if (b && immutable) 
+	  current->setImmutable();
         return b;
       }
       current = current->_next;
@@ -191,17 +168,48 @@ void Configuration::list(int width, int nameWidth) {
 }
 
 
+bool Configuration::remove(const char* param) {
+  VoidParameter *current = head;
+  VoidParameter **prevnext = &head;
+
+  while (current) {
+    if (strcasecmp(current->getName(), param) == 0) {
+      *prevnext = current->_next;
+      return true;
+    }
+    prevnext = &current->_next;
+    current = current->_next;
+  }
+
+  return false;
+}
+
+
 // -=- VoidParameter
 
-VoidParameter::VoidParameter(const char* name_, const char* desc_, Configuration* conf)
-  : immutable(false), name(name_), description(desc_) {
-  if (!conf)
-    conf = Configuration::global();
+VoidParameter::VoidParameter(const char* name_, const char* desc_,
+			     ConfigurationObject co)
+  : immutable(false), name(name_), description(desc_)
+{
+  Configuration *conf = NULL;
+
+  switch (co) {
+  case ConfGlobal: conf = Configuration::global();
+    break;
+  case ConfServer: conf = Configuration::server();
+    break;
+  case ConfViewer: conf = Configuration::viewer();
+    break;
+  }
+
   _next = conf->head;
   conf->head = this;
+
+  mutex = new os::Mutex();
 }
 
 VoidParameter::~VoidParameter() {
+  delete mutex;
 }
 
 const char*
@@ -231,8 +239,8 @@ VoidParameter::setImmutable() {
 // -=- AliasParameter
 
 AliasParameter::AliasParameter(const char* name_, const char* desc_,
-                               VoidParameter* param_, Configuration* conf)
-  : VoidParameter(name_, desc_, conf), param(param_) {
+                               VoidParameter* param_, ConfigurationObject co)
+  : VoidParameter(name_, desc_, co), param(param_) {
 }
 
 bool
@@ -257,10 +265,18 @@ bool AliasParameter::isBool() const {
   return param->isBool();
 }
 
+void
+AliasParameter::setImmutable() {
+  vlog.debug("set immutable %s (Alias)", getName());
+  param->setImmutable();
+}
+
+
 // -=- BoolParameter
 
-BoolParameter::BoolParameter(const char* name_, const char* desc_, bool v, Configuration* conf)
-: VoidParameter(name_, desc_, conf), value(v), def_value(v) {
+BoolParameter::BoolParameter(const char* name_, const char* desc_, bool v,
+			     ConfigurationObject co)
+: VoidParameter(name_, desc_, co), value(v), def_value(v) {
 }
 
 bool
@@ -313,8 +329,8 @@ BoolParameter::operator bool() const {
 // -=- IntParameter
 
 IntParameter::IntParameter(const char* name_, const char* desc_, int v,
-                           int minValue_, int maxValue_, Configuration* conf)
-  : VoidParameter(name_, desc_, conf), value(v), def_value(v),
+                           int minValue_, int maxValue_, ConfigurationObject co)
+  : VoidParameter(name_, desc_, co), value(v), def_value(v),
     minValue(minValue_), maxValue(maxValue_)
 {
 }
@@ -323,7 +339,7 @@ bool
 IntParameter::setParam(const char* v) {
   if (immutable) return true;
   vlog.debug("set %s(Int) to %s", getName(), v);
-  int i = atoi(v);
+  int i = strtol(v, NULL, 0);
   if (i < minValue || i > maxValue)
     return false;
   value = i;
@@ -360,17 +376,18 @@ IntParameter::operator int() const {
 // -=- StringParameter
 
 StringParameter::StringParameter(const char* name_, const char* desc_,
-                                 const char* v, Configuration* conf)
-  : VoidParameter(name_, desc_, conf), value(strDup(v)), def_value(v)
+                                 const char* v, ConfigurationObject co)
+  : VoidParameter(name_, desc_, co), value(strDup(v)), def_value(strDup(v))
 {
   if (!v) {
-    fprintf(stderr,"Default value <null> for %s not allowed\n",name_);
+    vlog.error("Default value <null> for %s not allowed",name_);
     throw rfb::Exception("Default value <null> not allowed");
   }
 }
 
 StringParameter::~StringParameter() {
   strFree(value);
+  strFree(def_value);
 }
 
 bool StringParameter::setParam(const char* v) {
@@ -393,19 +410,27 @@ char* StringParameter::getValueStr() const {
   return strDup(value);
 }
 
+StringParameter::operator const char *() const {
+  return value;
+}
+
 // -=- BinaryParameter
 
-BinaryParameter::BinaryParameter(const char* name_, const char* desc_, const void* v, int l, Configuration* conf)
-: VoidParameter(name_, desc_, conf), value(0), length(0), def_value((char*)v), def_length(l) {
+BinaryParameter::BinaryParameter(const char* name_, const char* desc_,
+				 const void* v, size_t l, ConfigurationObject co)
+: VoidParameter(name_, desc_, co), value(0), length(0), def_value(0), def_length(0) {
   if (l) {
     value = new char[l];
     length = l;
     memcpy(value, v, l);
+    def_value = new char[l];
+    def_length = l;
+    memcpy(def_value, v, l);
   }
 }
 BinaryParameter::~BinaryParameter() {
-  if (value)
-    delete [] value;
+  delete [] value;
+  delete [] def_value;
 }
 
 bool BinaryParameter::setParam(const char* v) {
@@ -415,9 +440,9 @@ bool BinaryParameter::setParam(const char* v) {
   return rdr::HexInStream::hexStrToBin(v, &value, &length);
 }
 
-void BinaryParameter::setParam(const void* v, int len) {
+void BinaryParameter::setParam(const void* v, size_t len) {
   LOCK_CONFIG;
-  if (immutable) return;
+  if (immutable) return; 
   vlog.debug("set %s(Binary)", getName());
   delete [] value; value = 0;
   if (len) {
@@ -436,7 +461,7 @@ char* BinaryParameter::getValueStr() const {
   return rdr::HexOutStream::binToHexStr(value, length);
 }
 
-void BinaryParameter::getData(void** data_, int* length_) const {
+void BinaryParameter::getData(void** data_, size_t* length_) const {
   LOCK_CONFIG;
   if (length_) *length_ = length;
   if (data_) {

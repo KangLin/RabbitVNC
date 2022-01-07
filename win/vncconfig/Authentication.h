@@ -20,12 +20,17 @@
 
 #include <vncconfig/PasswordDialog.h>
 #include <rfb_win32/Registry.h>
-#include <rfb_win32/Dialog.h>
-#include <rfb_win32/OSVersion.h>
+#include <rfb_win32/SecurityPage.h>
 #include <rfb_win32/MsgBox.h>
 #include <rfb/ServerCore.h>
-#include <rfb/secTypes.h>
+#include <rfb/Security.h>
+#include <rfb/SecurityServer.h>
+#include <rfb/SSecurityVncAuth.h>
+#ifdef HAVE_GNUTLS
+#include <rfb/SSecurityTLS.h>
+#endif
 #include <rfb/Password.h>
+#include <commctrl.h>
 
 static rfb::BoolParameter queryOnlyIfLoggedOn("QueryOnlyIfLoggedOn",
   "Only prompt for a local user to accept incoming connections if there is a user logged on", false);
@@ -34,86 +39,80 @@ namespace rfb {
 
   namespace win32 {
 
-    class AuthenticationPage : public PropSheetPage {
+    class SecPage : public SecurityPage {
     public:
-      AuthenticationPage(const RegKey& rk)
-        : PropSheetPage(GetModuleHandle(0), MAKEINTRESOURCE(IDD_AUTHENTICATION)), regKey(rk) {}
+      SecPage(const RegKey& rk)
+        : SecurityPage(NULL), regKey(rk) {
+        security = new SecurityServer();
+      }
+
       void initDialog() {
-        CharArray sec_types_str(SSecurityFactoryStandard::sec_types.getData());
-        std::list<int> sec_types = parseSecTypes(sec_types_str.buf);
+        SecurityPage::initDialog();
 
-        useNone = useVNC = false;
-        std::list<int>::iterator i;
-        for (i=sec_types.begin(); i!=sec_types.end(); i++) {
-          if ((*i) == secTypeNone) useNone = true;
-          else if ((*i) == secTypeVncAuth) useVNC = true;
-        }
-
-        HWND security = GetDlgItem(handle, IDC_ENCRYPTION);
-        SendMessage(security, CB_ADDSTRING, 0, (LPARAM)_T("Always Off"));
-        SendMessage(security, CB_SETCURSEL, 0, 0);
-        enableItem(IDC_AUTH_NT, false); enableItem(IDC_AUTH_NT_CONF, false);
-        enableItem(IDC_ENCRYPTION, false); enableItem(IDC_AUTH_RA2_CONF, false);
-
-        setItemChecked(IDC_AUTH_NONE, useNone);
-        setItemChecked(IDC_AUTH_VNC, useVNC);
         setItemChecked(IDC_QUERY_CONNECT, rfb::Server::queryConnect);
         setItemChecked(IDC_QUERY_LOGGED_ON, queryOnlyIfLoggedOn);
         onCommand(IDC_AUTH_NONE, 0);
       }
+
       bool onCommand(int id, int cmd) {
-        switch (id) {
-        case IDC_AUTH_VNC_PASSWD:
-          {
-            PasswordDialog passwdDlg(regKey, registryInsecure);
-            passwdDlg.showDialog(handle);
-          }
-          return true;
-        case IDC_AUTH_NONE:
-        case IDC_AUTH_VNC:
-          enableItem(IDC_AUTH_VNC_PASSWD, isItemChecked(IDC_AUTH_VNC));
-        case IDC_QUERY_CONNECT:
-        case IDC_QUERY_LOGGED_ON:
-          setChanged((useNone != isItemChecked(IDC_AUTH_NONE)) ||
-                     (useVNC != isItemChecked(IDC_AUTH_VNC)) ||
-                     (rfb::Server::queryConnect != isItemChecked(IDC_QUERY_CONNECT)) ||
-                     (queryOnlyIfLoggedOn != isItemChecked(IDC_QUERY_LOGGED_ON)));
+        SecurityPage::onCommand(id, cmd);
+
+        setChanged(true);
+
+        if (id == IDC_AUTH_VNC_PASSWD) {
+          PasswordDialog passwdDlg(regKey, registryInsecure);
+          passwdDlg.showDialog(handle);
+        } else if (id == IDC_LOAD_CERT) {
+          const TCHAR* title = _T("X509Cert");
+          const TCHAR* filter =
+             _T("X.509 Certificates (*.crt;*.cer;*.pem)\0*.crt;*.cer;*.pem\0All\0*.*\0");
+          showFileChooser(regKey, title, filter, handle);
+        } else if (id == IDC_LOAD_CERTKEY) {
+          const TCHAR* title = _T("X509Key");
+          const TCHAR* filter = _T("X.509 Keys (*.key;*.pem)\0*.key;*.pem\0All\0*.*\0");
+          showFileChooser(regKey, title, filter, handle);
+        } else if (id == IDC_QUERY_LOGGED_ON) {
           enableItem(IDC_QUERY_LOGGED_ON, enableQueryOnlyIfLoggedOn());
-          return false;
-        };
-        return false;
+        }
+
+        return true;
       }
       bool onOk() {
-        bool useVncChanged = useVNC != isItemChecked(IDC_AUTH_VNC);
-        useVNC = isItemChecked(IDC_AUTH_VNC);
-        useNone = isItemChecked(IDC_AUTH_NONE);
-        if (useVNC) {
+        SecurityPage::onOk();
+
+        if (isItemChecked(IDC_AUTH_VNC))
           verifyVncPassword(regKey);
-          regKey.setString(_T("SecurityTypes"), _T("VncAuth"));
-        } else {
-          if (haveVncPassword() && useVncChanged &&
-              MsgBox(0, _T("The VNC authentication method is disabled, but a password is still stored for it.\n")
-                        _T("Do you want to remove the VNC authentication password from the registry?"),
-                        MB_ICONWARNING | MB_YESNO) == IDYES) {
-            regKey.setBinary(_T("Password"), 0, 0);
-          }
-          regKey.setString(_T("SecurityTypes"), _T("None"));
+        else if (haveVncPassword() && 
+            MsgBox(0, _T("The VNC authentication method is disabled, but a password is still stored for it.\n")
+                      _T("Do you want to remove the VNC authentication password from the registry?"),
+                      MB_ICONWARNING | MB_YESNO) == IDYES) {
+          regKey.setBinary(_T("Password"), 0, 0);
         }
-        regKey.setString(_T("ReverseSecurityTypes"), _T("None"));
+
+#ifdef HAVE_GNUTLS
+        if (isItemChecked(IDC_ENC_X509)) {
+          SSecurityTLS::X509_CertFile.setParam(regKey.getString("X509Cert"));
+          SSecurityTLS::X509_CertFile.setParam(regKey.getString("X509Key"));
+        }
+#endif
+
+        regKey.setString(_T("SecurityTypes"), security->ToString());
         regKey.setBool(_T("QueryConnect"), isItemChecked(IDC_QUERY_CONNECT));
         regKey.setBool(_T("QueryOnlyIfLoggedOn"), isItemChecked(IDC_QUERY_LOGGED_ON));
+
         return true;
       }
       void setWarnPasswdInsecure(bool warn) {
         registryInsecure = warn;
       }
       bool enableQueryOnlyIfLoggedOn() {
-        return isItemChecked(IDC_QUERY_CONNECT) && osVersion.isPlatformNT && (osVersion.dwMajorVersion >= 5);
+        return isItemChecked(IDC_QUERY_CONNECT);
       }
 
 
       static bool haveVncPassword() {
-        PlainPasswd password(SSecurityFactoryStandard::vncAuthPasswd.getVncAuthPasswd());
+        PlainPasswd password, passwordReadOnly;
+        SSecurityVncAuth::vncAuthPasswd.getVncAuthPasswd(&password, &passwordReadOnly);
         return password.buf && strlen(password.buf) != 0;
       }
 
@@ -126,16 +125,62 @@ namespace rfb {
         }
       }
 
+      virtual void loadX509Certs(void) {}
+      virtual void enableX509Dialogs(void) {
+        enableItem(IDC_LOAD_CERT, true);
+        enableItem(IDC_LOAD_CERTKEY, true);
+      }
+      virtual void disableX509Dialogs(void) {
+        enableItem(IDC_LOAD_CERT, false);
+        enableItem(IDC_LOAD_CERTKEY, false);
+      }
+      virtual void loadVncPasswd() {
+        enableItem(IDC_AUTH_VNC_PASSWD, isItemChecked(IDC_AUTH_VNC));
+      }
+
     protected:
       RegKey regKey;
       static bool registryInsecure;
-      bool useNone;
-      bool useVNC;
+    private:
+      inline void modifyAuthMethod(int enc_idc, int auth_idc, bool enable)
+      {
+        setItemChecked(enc_idc, enable);
+        setItemChecked(auth_idc, enable);
+      }
+      inline bool showFileChooser(const RegKey& rk,
+                                  const char* title,
+                                  const char* filter,
+                                  HWND hwnd)
+      {
+        OPENFILENAME ofn;
+        char filename[MAX_PATH];
+
+        ZeroMemory(&ofn, sizeof(ofn));
+        ZeroMemory(&filename, sizeof(filename));
+        filename[0] = '\0';
+        ofn.lStructSize = sizeof(ofn);
+        ofn.hwndOwner = hwnd;
+        ofn.lpstrFile = filename;
+        ofn.nMaxFile = sizeof(filename);
+        ofn.lpstrFilter = (char*)filter;
+        ofn.nFilterIndex = 1;
+        ofn.lpstrFileTitle = NULL;
+        ofn.nMaxFileTitle = 0;
+        ofn.lpstrTitle = (char*)title;
+        ofn.lpstrInitialDir = NULL;
+        ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+
+        if (GetOpenFileName(&ofn)==TRUE) {
+          regKey.setString(title, filename);
+          return true;
+        }
+        return false;
+      }
     };
 
   };
 
-  bool AuthenticationPage::registryInsecure = false;
+  bool SecPage::registryInsecure = false;
 
 };
 

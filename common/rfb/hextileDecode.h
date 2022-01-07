@@ -18,13 +18,11 @@
 //
 // Hextile decoding function.
 //
-// This file is #included after having set the following macros:
+// This file is #included after having set the following macro:
 // BPP                - 8, 16 or 32
-// EXTRA_ARGS         - optional extra arguments
-// FILL_RECT          - fill a rectangle with a single colour
-// IMAGE_RECT         - draw a rectangle of pixel data from a buffer
 
 #include <rdr/InStream.h>
+#include <rfb/Exception.h>
 #include <rfb/hextileConstants.h>
 
 namespace rfb {
@@ -40,15 +38,14 @@ namespace rfb {
 #define READ_PIXEL CONCAT2E(readOpaque,BPP)
 #define HEXTILE_DECODE CONCAT2E(hextileDecode,BPP)
 
-void HEXTILE_DECODE (const Rect& r, rdr::InStream* is, PIXEL_T* buf
-#ifdef EXTRA_ARGS
-                     , EXTRA_ARGS
-#endif
-                     )
+static void HEXTILE_DECODE (const Rect& r, rdr::InStream* is,
+                            const PixelFormat& pf,
+                            ModifiablePixelBuffer* pb)
 {
   Rect t;
   PIXEL_T bg = 0;
   PIXEL_T fg = 0;
+  PIXEL_T buf[16 * 16];
 
   for (t.tl.y = r.tl.y; t.tl.y < r.br.y; t.tl.y += 16) {
 
@@ -61,24 +58,20 @@ void HEXTILE_DECODE (const Rect& r, rdr::InStream* is, PIXEL_T* buf
       int tileType = is->readU8();
 
       if (tileType & hextileRaw) {
-	is->readBytes(buf, t.area() * (BPP/8));
-	IMAGE_RECT(t, buf);
-	continue;
+        is->readBytes(buf, t.area() * (BPP/8));
+        pb->imageRect(pf, t, buf);
+        continue;
       }
 
       if (tileType & hextileBgSpecified)
-	bg = is->READ_PIXEL();
+        bg = is->READ_PIXEL();
 
-#ifdef FAVOUR_FILL_RECT
-      FILL_RECT(t, bg);
-#else
       int len = t.area();
-      PIXEL_T* ptr = (PIXEL_T*)buf;
+      PIXEL_T* ptr = buf;
       while (len-- > 0) *ptr++ = bg;
-#endif
 
       if (tileType & hextileFgSpecified)
-	fg = is->READ_PIXEL();
+        fg = is->READ_PIXEL();
 
       if (tileType & hextileAnySubrects) {
         int nSubrects = is->readU8();
@@ -91,31 +84,23 @@ void HEXTILE_DECODE (const Rect& r, rdr::InStream* is, PIXEL_T* buf
           int xy = is->readU8();
           int wh = is->readU8();
 
-#ifdef FAVOUR_FILL_RECT
-          Rect s;
-          s.tl.x = t.tl.x + ((xy >> 4) & 15);
-          s.tl.y = t.tl.y + (xy & 15);
-          s.br.x = s.tl.x + ((wh >> 4) & 15) + 1;
-          s.br.y = s.tl.y + (wh & 15) + 1;
-          FILL_RECT(s, fg);
-#else
           int x = ((xy >> 4) & 15);
           int y = (xy & 15);
           int w = ((wh >> 4) & 15) + 1;
           int h = (wh & 15) + 1;
-          PIXEL_T* ptr = (PIXEL_T*)buf + y * t.width() + x;
+          if (x + w > 16 || y + h > 16) {
+            throw rfb::Exception("HEXTILE_DECODE: Hextile out of bounds");
+          }
+          PIXEL_T* ptr = buf + y * t.width() + x;
           int rowAdd = t.width() - w;
           while (h-- > 0) {
             int len = w;
             while (len-- > 0) *ptr++ = fg;
             ptr += rowAdd;
           }
-#endif
         }
       }
-#ifndef FAVOUR_FILL_RECT
-      IMAGE_RECT(t, buf);
-#endif
+      pb->imageRect(pf, t, buf);
     }
   }
 }

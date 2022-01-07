@@ -36,24 +36,30 @@ namespace rdr {
 
   public:
 
-    MemInStream(const void* data, int len, bool deleteWhenDone_=false)
+    MemInStream(const void* data, size_t len, bool deleteWhenDone_=false)
       : start((const U8*)data), deleteWhenDone(deleteWhenDone_)
     {
       ptr = start;
       end = start + len;
+
+#ifdef RFB_INSTREAM_CHECK
+      // MemInStream cannot add more data, so callers are assumed to already
+      // new the total size
+      avail();
+#endif
     }
 
     virtual ~MemInStream() {
       if (deleteWhenDone)
-        delete [] (U8*)start;
+        delete [] start;
     }
 
-    int pos() { return ptr - start; }
-    void reposition(int pos) { ptr = start + pos; }
+    size_t pos() { return ptr - start; }
+    void reposition(size_t pos) { ptr = start + pos; }
 
   private:
 
-    int overrun(int itemSize, int nItems, bool wait) { throw EndOfStream(); }
+    bool overrun(size_t needed) { throw EndOfStream(); }
     const U8* start;
     bool deleteWhenDone;
   };

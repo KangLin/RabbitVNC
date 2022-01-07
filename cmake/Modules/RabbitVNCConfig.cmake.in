@@ -1,0 +1,12 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+foreach(dependens_lib @RabbitVNC_DEPENDENS@)
+    find_dependency(${dependens_lib})
+endforeach()
+
+include("${CMAKE_CURRENT_LIST_DIR}/RabbitVNCTargets.cmake")
+
+#check_required_components(
+#  RabbitVNC
+#  )

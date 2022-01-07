@@ -1,41 +1,56 @@
-project(x0vncserver)
+include_directories(${X11_INCLUDE_DIR})
+include_directories(${CMAKE_SOURCE_DIR}/unix/common)
+include_directories(${CMAKE_SOURCE_DIR}/unix/tx)
+include_directories(${CMAKE_SOURCE_DIR}/unix)
+include_directories(${CMAKE_SOURCE_DIR}/common)
 
-add_executable(${PROJECT_NAME}
-  buildtime.c
-  Image.cxx
-  x0vncserver.cxx
-  ../vncconfig/QueryConnectDialog.cxx
-)
+add_executable(x0vncserver
+    buildtime.c
+    Geometry.cxx
+    Image.cxx
+    PollingManager.cxx
+    PollingScheduler.cxx
+    TimeMillis.cxx
+    qnum_to_xorgevdev.c
+    qnum_to_xorgkbd.c
+    x0vncserver.cxx
+    XPixelBuffer.cxx
+    XDesktop.cxx
+    RandrGlue.c
+    ../vncconfig/QueryConnectDialog.cxx
+    )
 
-target_link_libraries(${PROJECT_NAME} PRIVATE tx network)
-target_include_directories(${PROJECT_NAME} PRIVATE $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/unix/vncconfig>)
+target_link_libraries(x0vncserver tx RabbitVNC unixcommon)
 
 if(X11_FOUND AND X11_XTest_LIB)
-  target_compile_definitions(${PROJECT_NAME} PRIVATE HAVE_XTEST)
-  target_link_libraries(${PROJECT_NAME} PRIVATE ${X11_XTest_LIB})
+    add_definitions(-DHAVE_XTEST)
+    target_link_libraries(x0vncserver ${X11_XTest_LIB})
 else()
-  message(WARNING "No XTest extension. x0vncserver will be view-only.")
+    message(WARNING "No XTest extension.  x0vncserver will be view-only.")
 endif()
 
 if(X11_FOUND AND X11_Xdamage_LIB)
-  target_compile_definitions(${PROJECT_NAME} PRIVATE HAVE_XDAMAGE)
-  target_link_libraries(${PROJECT_NAME} PRIVATE ${X11_Xdamage_LIB})
+    add_definitions(-DHAVE_XDAMAGE)
+    target_link_libraries(x0vncserver ${X11_Xdamage_LIB})
 else()
-  message(WARNING "No DAMAGE extension.  x0vncserver will have to use the slower polling method.")
+    message(WARNING "No DAMAGE extension.  x0vncserver will have to use the slower polling method.")
 endif()
 
-set_target_properties(${PROJECT_NAME} PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    VERSION ${BUILD_VERSION})
+if(X11_FOUND AND X11_Xfixes_LIB)
+    add_definitions(-DHAVE_XFIXES)
+    target_link_libraries(x0vncserver ${X11_Xfixes_LIB})
+else()
+    message(WARNING "No XFIXES extension.  x0vncserver will not be able to show cursors.")
+endif()
 
-INSTALL(TARGETS ${PROJECT_NAME}
-    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
-        COMPONENT Runtime
-    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-        COMPONENT Runtime
-    )
+if(X11_FOUND AND X11_Xrandr_LIB)
+    add_definitions(-DHAVE_XRANDR)
+    target_link_libraries(x0vncserver ${X11_Xrandr_LIB})
+else()
+    message(WARNING "No Xrandr extension.  x0vncserver will not be able to resize session.")
+endif()
 
-install(FILES ${PROJECT_NAME}.man
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/man1 RENAME ${PROJECT_NAME}.1
-        COMPONENT Runtime)
+target_link_libraries(x0vncserver ${X11_LIBRARIES})
+
+install(TARGETS x0vncserver DESTINATION ${CMAKE_INSTALL_FULL_BINDIR})
+install(FILES x0vncserver.man DESTINATION ${CMAKE_INSTALL_FULL_MANDIR}/man1 RENAME x0vncserver.1)

@@ -24,6 +24,7 @@ namespace rdr {
   typedef unsigned char U8;
   typedef unsigned short U16;
   typedef unsigned int U32;
+  typedef unsigned long long U64;
   typedef signed char S8;
   typedef signed short S16;
   typedef signed int S32;
@@ -59,6 +60,16 @@ namespace rdr {
     ~U32Array() { delete [] buf; }
     U32* takeBuf() { U32* tmp = buf; buf = 0; return tmp; }
     U32* buf;
+  };
+
+  class S32Array {
+  public:
+    S32Array() : buf(0) {}
+    S32Array(S32* a) : buf(a) {} // note: assumes ownership
+    S32Array(int len) : buf(new S32[len]) {}
+    ~S32Array() { delete [] buf; }
+    S32* takeBuf() { S32* tmp = buf; buf = 0; return tmp; }
+    S32* buf;
   };
 
 } // end of namespace rdr

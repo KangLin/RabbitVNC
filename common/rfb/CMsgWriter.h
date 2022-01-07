@@ -1,4 +1,5 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
+ * Copyright 2009-2019 Pierre Ossman for Cendio AB
  * 
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,49 +17,59 @@
  * USA.
  */
 //
-// CMsgWriter - class for writing RFB messages on the client side.
+// CMsgWriter - class for writing RFB messages on the server side.
 //
 
 #ifndef __RFB_CMSGWRITER_H__
 #define __RFB_CMSGWRITER_H__
 
-#include <rfb/InputHandler.h>
+#include <list>
+
+#include <rdr/types.h>
 
 namespace rdr { class OutStream; }
 
 namespace rfb {
 
   class PixelFormat;
-  class ConnParams;
+  class ServerParams;
+  struct ScreenSet;
+  struct Point;
   struct Rect;
 
-  class CMsgWriter : public InputHandler {
+  class CMsgWriter {
   public:
+    CMsgWriter(ServerParams* server, rdr::OutStream* os);
     virtual ~CMsgWriter();
 
-    // CMsgWriter abstract interface methods
-    virtual void writeClientInit(bool shared)=0;
-    virtual void startMsg(int type)=0;
-    virtual void endMsg()=0;
+    void writeClientInit(bool shared);
 
-    // CMsgWriter implemented methods
-    virtual void writeSetPixelFormat(const PixelFormat& pf);
-    virtual void writeSetEncodings(int nEncodings, rdr::U32* encodings);
-    virtual void writeSetEncodings(int preferredEncoding, bool useCopyRect);
-    virtual void writeFramebufferUpdateRequest(const Rect& r,bool incremental);
+    void writeSetPixelFormat(const PixelFormat& pf);
+    void writeSetEncodings(const std::list<rdr::U32> encodings);
+    void writeSetDesktopSize(int width, int height, const ScreenSet& layout);
 
-    // InputHandler implementation
-    virtual void keyEvent(rdr::U32 key, bool down);
-    virtual void pointerEvent(const Point& pos, int buttonMask);
-    virtual void clientCutText(const char* str, int len);
+    void writeFramebufferUpdateRequest(const Rect& r,bool incremental);
+    void writeEnableContinuousUpdates(bool enable, int x, int y, int w, int h);
 
-    ConnParams* getConnParams() { return cp; }
-    rdr::OutStream* getOutStream() { return os; }
+    void writeFence(rdr::U32 flags, unsigned len, const char data[]);
+
+    void writeKeyEvent(rdr::U32 keysym, rdr::U32 keycode, bool down);
+    void writePointerEvent(const Point& pos, int buttonMask);
+
+    void writeClientCutText(const char* str);
+
+    void writeClipboardCaps(rdr::U32 caps, const rdr::U32* lengths);
+    void writeClipboardRequest(rdr::U32 flags);
+    void writeClipboardPeek(rdr::U32 flags);
+    void writeClipboardNotify(rdr::U32 flags);
+    void writeClipboardProvide(rdr::U32 flags, const size_t* lengths,
+                               const rdr::U8* const* data);
 
   protected:
-    CMsgWriter(ConnParams* cp, rdr::OutStream* os);
+    void startMsg(int type);
+    void endMsg();
 
-    ConnParams* cp;
+    ServerParams* server;
     rdr::OutStream* os;
   };
 }

@@ -19,15 +19,8 @@
 //
 // ZRLE decoding function.
 //
-// This file is #included after having set the following macros:
+// This file is #included after having set the following macro:
 // BPP                - 8, 16 or 32
-// EXTRA_ARGS         - optional extra arguments
-// FILL_RECT          - fill a rectangle with a single colour
-// IMAGE_RECT         - draw a rectangle of pixel data from a buffer
-
-#include <rdr/InStream.h>
-#include <rdr/ZlibInStream.h>
-#include <assert.h>
 
 namespace rfb {
 
@@ -40,24 +33,22 @@ namespace rfb {
 
 #ifdef CPIXEL
 #define PIXEL_T rdr::CONCAT2E(U,BPP)
-#define READ_PIXEL CONCAT2E(readOpaque,CPIXEL)
+#define READ_PIXEL(is) CONCAT2E(readOpaque,CPIXEL)(is)
 #define ZRLE_DECODE CONCAT2E(zrleDecode,CPIXEL)
 #else
 #define PIXEL_T rdr::CONCAT2E(U,BPP)
-#define READ_PIXEL CONCAT2E(readOpaque,BPP)
+#define READ_PIXEL(is) is->CONCAT2E(readOpaque,BPP)()
 #define ZRLE_DECODE CONCAT2E(zrleDecode,BPP)
 #endif
 
 void ZRLE_DECODE (const Rect& r, rdr::InStream* is,
-                      rdr::ZlibInStream* zis, PIXEL_T* buf
-#ifdef EXTRA_ARGS
-                      , EXTRA_ARGS
-#endif
-                      )
+                  rdr::ZlibInStream* zis,
+                  const PixelFormat& pf, ModifiablePixelBuffer* pb)
 {
   int length = is->readU32();
   zis->setUnderlying(is, length);
   Rect t;
+  PIXEL_T buf[64 * 64];
 
   for (t.tl.y = r.tl.y; t.tl.y < r.br.y; t.tl.y += 64) {
 
@@ -67,18 +58,24 @@ void ZRLE_DECODE (const Rect& r, rdr::InStream* is,
 
       t.br.x = __rfbmin(r.br.x, t.tl.x + 64);
 
+      zlibHasData(zis, 1);
       int mode = zis->readU8();
       bool rle = mode & 128;
       int palSize = mode & 127;
       PIXEL_T palette[128];
 
+#ifdef CPIXEL
+      zlibHasData(zis, 3 * palSize);
+#else
+      zlibHasData(zis, BPP/8 * palSize);
+#endif
       for (int i = 0; i < palSize; i++) {
-        palette[i] = zis->READ_PIXEL();
+        palette[i] = READ_PIXEL(zis);
       }
 
       if (palSize == 1) {
         PIXEL_T pix = palette[0];
-        FILL_RECT(t,pix);
+        pb->fillRect(pf, t, &pix);
         continue;
       }
 
@@ -88,10 +85,12 @@ void ZRLE_DECODE (const Rect& r, rdr::InStream* is,
           // raw
 
 #ifdef CPIXEL
+          zlibHasData(zis, 3 * t.area());
           for (PIXEL_T* ptr = buf; ptr < buf+t.area(); ptr++) {
-            *ptr = zis->READ_PIXEL();
+            *ptr = READ_PIXEL(zis);
           }
 #else
+          zlibHasData(zis, BPP/8 * t.area());
           zis->readBytes(buf, t.area() * (BPP / 8));
 #endif
 
@@ -110,6 +109,7 @@ void ZRLE_DECODE (const Rect& r, rdr::InStream* is,
 
             while (ptr < eol) {
               if (nbits == 0) {
+                zlibHasData(zis, 1);
                 byte = zis->readU8();
                 nbits = 8;
               }
@@ -120,12 +120,6 @@ void ZRLE_DECODE (const Rect& r, rdr::InStream* is,
           }
         }
 
-#ifdef FAVOUR_FILL_RECT
-       //fprintf(stderr,"copying data to screen %dx%d at %d,%d\n",
-        //t.width(),t.height(),t.tl.x,t.tl.y);
-        IMAGE_RECT(t,buf);
-#endif
-
       } else {
 
         if (palSize == 0) {
@@ -135,46 +129,25 @@ void ZRLE_DECODE (const Rect& r, rdr::InStream* is,
           PIXEL_T* ptr = buf;
           PIXEL_T* end = ptr + t.area();
           while (ptr < end) {
-            PIXEL_T pix = zis->READ_PIXEL();
+#ifdef CPIXEL
+            zlibHasData(zis, 3);
+#else
+            zlibHasData(zis, BPP/8);
+#endif
+            PIXEL_T pix = READ_PIXEL(zis);
             int len = 1;
             int b;
             do {
+              zlibHasData(zis, 1);
               b = zis->readU8();
               len += b;
             } while (b == 255);
 
-            assert(len <= end - ptr);
-
-#ifdef FAVOUR_FILL_RECT
-            int i = ptr - buf;
-            ptr += len;
-
-            int runX = i % t.width();
-            int runY = i / t.width();
-
-            if (runX + len > t.width()) {
-              if (runX != 0) {
-                FILL_RECT(Rect(t.tl.x+runX, t.tl.y+runY, t.width()-runX, 1),
-                          pix);
-                len -= t.width()-runX;
-                runX = 0;
-                runY++;
-              }
-
-              if (len > t.width()) {
-                FILL_RECT(Rect(t.tl.x, t.tl.y+runY, t.width(), len/t.width()),
-                          pix);
-                runY += len / t.width();
-                len = len % t.width();
-              }
+            if (end - ptr < len) {
+              throw Exception ("ZRLE decode error");
             }
 
-            if (len != 0) {
-              FILL_RECT(Rect(t.tl.x+runX, t.tl.y+runY, len, 1), pix);
-            }
-#else
             while (len-- > 0) *ptr++ = pix;
-#endif
 
           }
         } else {
@@ -184,65 +157,37 @@ void ZRLE_DECODE (const Rect& r, rdr::InStream* is,
           PIXEL_T* ptr = buf;
           PIXEL_T* end = ptr + t.area();
           while (ptr < end) {
+            zlibHasData(zis, 1);
             int index = zis->readU8();
             int len = 1;
             if (index & 128) {
               int b;
               do {
+                zlibHasData(zis, 1);
                 b = zis->readU8();
                 len += b;
               } while (b == 255);
 
-              assert(len <= end - ptr);
+              if (end - ptr < len) {
+                throw Exception ("ZRLE decode error");
+              }
             }
 
             index &= 127;
 
             PIXEL_T pix = palette[index];
 
-#ifdef FAVOUR_FILL_RECT
-            int i = ptr - buf;
-            ptr += len;
-
-            int runX = i % t.width();
-            int runY = i / t.width();
-
-            if (runX + len > t.width()) {
-              if (runX != 0) {
-                FILL_RECT(Rect(t.tl.x+runX, t.tl.y+runY, t.width()-runX, 1),
-                          pix);
-                len -= t.width()-runX;
-                runX = 0;
-                runY++;
-              }
-
-              if (len > t.width()) {
-                FILL_RECT(Rect(t.tl.x, t.tl.y+runY, t.width(), len/t.width()),
-                          pix);
-                runY += len / t.width();
-                len = len % t.width();
-              }
-            }
-
-            if (len != 0) {
-              FILL_RECT(Rect(t.tl.x+runX, t.tl.y+runY, len, 1), pix);
-            }
-#else
             while (len-- > 0) *ptr++ = pix;
-#endif
           }
         }
       }
 
-#ifndef FAVOUR_FILL_RECT
-      //fprintf(stderr,"copying data to screen %dx%d at %d,%d\n",
-      //t.width(),t.height(),t.tl.x,t.tl.y);
-      IMAGE_RECT(t,buf);
-#endif
+      pb->imageRect(pf, t, buf);
     }
   }
 
-  zis->reset();
+  zis->flushUnderlying();
+  zis->setUnderlying(NULL, 0);
 }
 
 #undef ZRLE_DECODE

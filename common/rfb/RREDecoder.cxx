@@ -15,15 +15,17 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
  * USA.
  */
-#include <rfb/CMsgReader.h>
-#include <rfb/CMsgHandler.h>
+
+#include <rdr/InStream.h>
+#include <rdr/MemInStream.h>
+#include <rdr/OutStream.h>
+
+#include <rfb/ServerParams.h>
+#include <rfb/PixelBuffer.h>
 #include <rfb/RREDecoder.h>
 
 using namespace rfb;
 
-#define EXTRA_ARGS CMsgHandler* handler
-#define FILL_RECT(r, p) handler->fillRect(r, p)
-#define IMAGE_RECT(r, p) handler->imageRect(r, p)
 #define BPP 8
 #include <rfb/rreDecode.h>
 #undef BPP
@@ -34,12 +36,7 @@ using namespace rfb;
 #include <rfb/rreDecode.h>
 #undef BPP
 
-Decoder* RREDecoder::create(CMsgReader* reader)
-{
-  return new RREDecoder(reader);
-}
-
-RREDecoder::RREDecoder(CMsgReader* reader_) : reader(reader_)
+RREDecoder::RREDecoder() : Decoder(DecoderPlain)
 {
 }
 
@@ -47,12 +44,41 @@ RREDecoder::~RREDecoder()
 {
 }
 
-void RREDecoder::readRect(const Rect& r, CMsgHandler* handler)
+bool RREDecoder::readRect(const Rect& r, rdr::InStream* is,
+                          const ServerParams& server, rdr::OutStream* os)
 {
-  rdr::InStream* is = reader->getInStream();
-  switch (reader->bpp()) {
-  case 8:  rreDecode8 (r, is, handler); break;
-  case 16: rreDecode16(r, is, handler); break;
-  case 32: rreDecode32(r, is, handler); break;
+  rdr::U32 numRects;
+  size_t len;
+
+  if (!is->hasData(4))
+    return false;
+
+  is->setRestorePoint();
+
+  numRects = is->readU32();
+  os->writeU32(numRects);
+
+  len = server.pf().bpp/8 + numRects * (server.pf().bpp/8 + 8);
+
+  if (!is->hasDataOrRestore(len))
+    return false;
+
+  is->clearRestorePoint();
+
+  os->copyBytes(is, len);
+
+  return true;
+}
+
+void RREDecoder::decodeRect(const Rect& r, const void* buffer,
+                            size_t buflen, const ServerParams& server,
+                            ModifiablePixelBuffer* pb)
+{
+  rdr::MemInStream is(buffer, buflen);
+  const PixelFormat& pf = server.pf();
+  switch (pf.bpp) {
+  case 8:  rreDecode8 (r, &is, pf, pb); break;
+  case 16: rreDecode16(r, &is, pf, pb); break;
+  case 32: rreDecode32(r, &is, pf, pb); break;
   }
 }

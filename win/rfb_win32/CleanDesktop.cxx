@@ -18,28 +18,18 @@
 
 // -=- CleanDesktop.cxx
 
-#include <windows.h>
-#include <wininet.h>
-#include <shlobj.h>
 #include <rfb_win32/CleanDesktop.h>
 #include <rfb_win32/CurrentUser.h>
 #include <rfb_win32/Registry.h>
-#include <rfb_win32/OSVersion.h>
 #include <rfb/LogWriter.h>
 #include <rdr/Exception.h>
+#include <os/os.h>
 #include <set>
-
-#ifdef SPI_GETUIEFFECTS
-#define RFB_HAVE_SPI_UIEFFECTS
-#else
-#pragma message("  NOTE: Not building Get/Set UI Effects support.")
-#endif
 
 using namespace rfb;
 using namespace rfb::win32;
 
 static LogWriter vlog("CleanDesktop");
-
 
 struct ActiveDesktop {
   ActiveDesktop() : handle(0) {
@@ -128,7 +118,7 @@ struct ActiveDesktop {
         vlog.error("failed to get desktop item count: %ld", hr);
         return false;
       }
-      for (unsigned int i=0; i<itemCount; i++) {
+      for (int i=0; i<itemCount; i++) {
         if (enableItem(i, false))
           restoreItems.insert(i);
       }
@@ -147,20 +137,20 @@ DWORD SysParamsInfo(UINT action, UINT param, PVOID ptr, UINT ini) {
   DWORD r = ERROR_SUCCESS;
   if (!SystemParametersInfo(action, param, ptr, ini)) {
     r = GetLastError();
-    vlog.info("SPI error: %d", r);
+    vlog.info("SPI error: %lu", r);
   }
   return r;
 }
 
 
-CleanDesktop::CleanDesktop() : restoreActiveDesktop(false), restoreWallpaper(false),
-                               restorePattern(false), restoreEffects(false) {
+CleanDesktop::CleanDesktop() : restoreActiveDesktop(false),
+                               restoreWallpaper(false),
+                               restoreEffects(false) {
   CoInitialize(0);
 }
 
 CleanDesktop::~CleanDesktop() {
   enableEffects();
-  enablePattern();
   enableWallpaper();
   CoUninitialize();
 }
@@ -177,7 +167,7 @@ void CleanDesktop::disableWallpaper() {
       if (ad.enable(false))
         restoreActiveDesktop = true;
     } catch (rdr::Exception& e) {
-      vlog.error(e.str());
+      vlog.error("%s", e.str());
     }
 
     // -=- Switch of normal wallpaper and notify apps
@@ -185,7 +175,7 @@ void CleanDesktop::disableWallpaper() {
     restoreWallpaper = true;
 
   } catch (rdr::Exception& e) {
-    vlog.info(e.str());
+    vlog.info("%s", e.str());
   }
 }
 
@@ -202,7 +192,7 @@ void CleanDesktop::enableWallpaper() {
         ad.enable(true);
         restoreActiveDesktop = false;
       } catch (rdr::Exception& e) {
-        vlog.error(e.str());
+        vlog.error("%s", e.str());
       }
     }
 
@@ -215,43 +205,7 @@ void CleanDesktop::enableWallpaper() {
     }
 
   } catch (rdr::Exception& e) {
-    vlog.info(e.str());
-  }
-}
-
-
-void CleanDesktop::disablePattern() {
-  try {
-    ImpersonateCurrentUser icu;
-
-    vlog.debug("disable desktop pattern");
-    SysParamsInfo(SPI_SETDESKPATTERN, 0, (PVOID) "", SPIF_SENDCHANGE);
-    restorePattern = true;
-
-  } catch (rdr::Exception& e) {
-    vlog.info(e.str());
-  }
-}
-
-void CleanDesktop::enablePattern() {
-  try {
-    if (restorePattern) {
-      ImpersonateCurrentUser icu;
-
-      vlog.debug("restoring pattern...");
-
-      TCharArray pattern;
-      if (osVersion.isPlatformWindows) {
-        RegKey cfgKey;
-        cfgKey.openKey(HKEY_CURRENT_USER, _T("Control Panel\\Desktop"));
-        pattern.buf = cfgKey.getString(_T("Pattern"));
-      }
-      SysParamsInfo(SPI_SETDESKPATTERN, 0, pattern.buf, SPIF_SENDCHANGE);
-      restorePattern = false;
-    }
-
-  } catch (rdr::Exception& e) {
-    vlog.info(e.str());
+    vlog.info("%s", e.str());
   }
 }
 
@@ -263,7 +217,6 @@ void CleanDesktop::disableEffects() {
     vlog.debug("disable desktop effects");
 
     SysParamsInfo(SPI_SETFONTSMOOTHING, FALSE, 0, SPIF_SENDCHANGE);
-#ifdef RFB_HAVE_SPI_UIEFFECTS
     if (SysParamsInfo(SPI_GETUIEFFECTS, 0, &uiEffects, 0) == ERROR_CALL_NOT_IMPLEMENTED) {
       SysParamsInfo(SPI_GETCOMBOBOXANIMATION, 0, &comboBoxAnim, 0);
       SysParamsInfo(SPI_GETGRADIENTCAPTIONS, 0, &gradientCaptions, 0);
@@ -281,13 +234,10 @@ void CleanDesktop::disableEffects() {
       // We *always* restore UI effects overall, since there is no Windows GUI to do it
       uiEffects = TRUE;
     }
-#else
-    vlog.debug("  not supported");
-#endif
     restoreEffects = true;
 
   } catch (rdr::Exception& e) {
-    vlog.info(e.str());
+    vlog.info("%s", e.str());
   }
 }
 
@@ -301,21 +251,17 @@ void CleanDesktop::enableEffects() {
       RegKey desktopCfg;
       desktopCfg.openKey(HKEY_CURRENT_USER, _T("Control Panel\\Desktop"));
       SysParamsInfo(SPI_SETFONTSMOOTHING, desktopCfg.getInt(_T("FontSmoothing"), 0) != 0, 0, SPIF_SENDCHANGE);
-#ifdef RFB_HAVE_SPI_UIEFFECTS
-      if (SysParamsInfo(SPI_SETUIEFFECTS, 0, (void*)uiEffects, SPIF_SENDCHANGE) == ERROR_CALL_NOT_IMPLEMENTED) {
-        SysParamsInfo(SPI_SETCOMBOBOXANIMATION, 0, (void*)comboBoxAnim, SPIF_SENDCHANGE);
-        SysParamsInfo(SPI_SETGRADIENTCAPTIONS, 0, (void*)gradientCaptions, SPIF_SENDCHANGE);
-        SysParamsInfo(SPI_SETHOTTRACKING, 0, (void*)hotTracking, SPIF_SENDCHANGE);
-        SysParamsInfo(SPI_SETLISTBOXSMOOTHSCROLLING, 0, (void*)listBoxSmoothScroll, SPIF_SENDCHANGE);
-        SysParamsInfo(SPI_SETMENUANIMATION, 0, (void*)menuAnim, SPIF_SENDCHANGE);
+      if (SysParamsInfo(SPI_SETUIEFFECTS, 0, (void*)(intptr_t)uiEffects, SPIF_SENDCHANGE) == ERROR_CALL_NOT_IMPLEMENTED) {
+        SysParamsInfo(SPI_SETCOMBOBOXANIMATION, 0, (void*)(intptr_t)comboBoxAnim, SPIF_SENDCHANGE);
+        SysParamsInfo(SPI_SETGRADIENTCAPTIONS, 0, (void*)(intptr_t)gradientCaptions, SPIF_SENDCHANGE);
+        SysParamsInfo(SPI_SETHOTTRACKING, 0, (void*)(intptr_t)hotTracking, SPIF_SENDCHANGE);
+        SysParamsInfo(SPI_SETLISTBOXSMOOTHSCROLLING, 0, (void*)(intptr_t)listBoxSmoothScroll, SPIF_SENDCHANGE);
+        SysParamsInfo(SPI_SETMENUANIMATION, 0, (void*)(intptr_t)menuAnim, SPIF_SENDCHANGE);
       }
       restoreEffects = false;
-#else
-      vlog.info("  not supported");
-#endif
     }
 
   } catch (rdr::Exception& e) {
-    vlog.info(e.str());
+    vlog.info("%s", e.str());
   }
 }

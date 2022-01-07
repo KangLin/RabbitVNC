@@ -1,4 +1,5 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
+ * Copyright (C) 2011 D. R. Commander.  All Rights Reserved.
  * 
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -34,20 +35,26 @@ namespace rdr {
 
   public:
 
-    ZlibOutStream(OutStream* os=0, int bufSize=0, int compressionLevel=-1);
+    ZlibOutStream(OutStream* os=0, int compressionLevel=-1);
     virtual ~ZlibOutStream();
 
     void setUnderlying(OutStream* os);
+    void setCompressionLevel(int level=-1);
     void flush();
-    int length();
+    size_t length();
+    virtual void cork(bool enable);
 
   private:
 
-    int overrun(int itemSize, int nItems);
+    virtual void overrun(size_t needed);
+    void deflate(int flush);
+    void checkCompressionLevel();
 
     OutStream* underlying;
-    int bufSize;
-    int offset;
+    int compressionLevel;
+    int newLevel;
+    size_t bufSize;
+    size_t offset;
     z_stream_s* zs;
     U8* start;
   };

@@ -15,15 +15,17 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
  * USA.
  */
-#include <rfb/CMsgReader.h>
-#include <rfb/CMsgHandler.h>
+
+#include <rdr/InStream.h>
+#include <rdr/MemInStream.h>
+#include <rdr/OutStream.h>
+
+#include <rfb/ServerParams.h>
+#include <rfb/PixelBuffer.h>
 #include <rfb/HextileDecoder.h>
 
 using namespace rfb;
 
-#define EXTRA_ARGS CMsgHandler* handler
-#define FILL_RECT(r, p) handler->fillRect(r, p)
-#define IMAGE_RECT(r, p) handler->imageRect(r, p)
 #define BPP 8
 #include <rfb/hextileDecode.h>
 #undef BPP
@@ -34,12 +36,7 @@ using namespace rfb;
 #include <rfb/hextileDecode.h>
 #undef BPP
 
-Decoder* HextileDecoder::create(CMsgReader* reader)
-{
-  return new HextileDecoder(reader);
-}
-
-HextileDecoder::HextileDecoder(CMsgReader* reader_) : reader(reader_)
+HextileDecoder::HextileDecoder() : Decoder(DecoderPlain)
 {
 }
 
@@ -47,13 +44,87 @@ HextileDecoder::~HextileDecoder()
 {
 }
 
-void HextileDecoder::readRect(const Rect& r, CMsgHandler* handler)
+bool HextileDecoder::readRect(const Rect& r, rdr::InStream* is,
+                              const ServerParams& server, rdr::OutStream* os)
 {
-  rdr::InStream* is = reader->getInStream();
-  rdr::U8* buf = reader->getImageBuf(16 * 16 * 4);
-  switch (reader->bpp()) {
-  case 8:  hextileDecode8 (r, is, (rdr::U8*) buf, handler); break;
-  case 16: hextileDecode16(r, is, (rdr::U16*)buf, handler); break;
-  case 32: hextileDecode32(r, is, (rdr::U32*)buf, handler); break;
+  Rect t;
+  size_t bytesPerPixel;
+
+  is->setRestorePoint();
+
+  bytesPerPixel = server.pf().bpp/8;
+
+  for (t.tl.y = r.tl.y; t.tl.y < r.br.y; t.tl.y += 16) {
+
+    t.br.y = __rfbmin(r.br.y, t.tl.y + 16);
+
+    for (t.tl.x = r.tl.x; t.tl.x < r.br.x; t.tl.x += 16) {
+      rdr::U8 tileType;
+
+      t.br.x = __rfbmin(r.br.x, t.tl.x + 16);
+
+      if (!is->hasDataOrRestore(1))
+        return false;
+
+      tileType = is->readU8();
+      os->writeU8(tileType);
+
+      if (tileType & hextileRaw) {
+        if (!is->hasDataOrRestore(t.area() * bytesPerPixel))
+          return false;
+        os->copyBytes(is, t.area() * bytesPerPixel);
+        continue;
+      }
+
+
+      if (tileType & hextileBgSpecified) {
+        if (!is->hasDataOrRestore(bytesPerPixel))
+          return false;
+        os->copyBytes(is, bytesPerPixel);
+      }
+
+      if (tileType & hextileFgSpecified) {
+        if (!is->hasDataOrRestore(bytesPerPixel))
+          return false;
+        os->copyBytes(is, bytesPerPixel);
+      }
+
+      if (tileType & hextileAnySubrects) {
+        rdr::U8 nSubrects;
+
+        if (!is->hasDataOrRestore(1))
+          return false;
+
+        nSubrects = is->readU8();
+        os->writeU8(nSubrects);
+
+        if (tileType & hextileSubrectsColoured) {
+          if (!is->hasDataOrRestore(nSubrects * (bytesPerPixel + 2)))
+            return false;
+          os->copyBytes(is, nSubrects * (bytesPerPixel + 2));
+        } else {
+          if (!is->hasDataOrRestore(nSubrects * 2))
+            return false;
+          os->copyBytes(is, nSubrects * 2);
+        }
+      }
+    }
+  }
+
+  is->clearRestorePoint();
+
+  return true;
+}
+
+void HextileDecoder::decodeRect(const Rect& r, const void* buffer,
+                                size_t buflen, const ServerParams& server,
+                                ModifiablePixelBuffer* pb)
+{
+  rdr::MemInStream is(buffer, buflen);
+  const PixelFormat& pf = server.pf();
+  switch (pf.bpp) {
+  case 8:  hextileDecode8 (r, &is, pf, pb); break;
+  case 16: hextileDecode16(r, &is, pf, pb); break;
+  case 32: hextileDecode32(r, &is, pf, pb); break;
   }
 }

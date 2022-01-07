@@ -33,9 +33,13 @@ namespace rfb {
     bool is_empty() const {
       return copied.is_empty() && changed.is_empty();
     }
+    // NOTE: We do not ever use UpdateInfo::numRects(), because Tight encoding
+    //       complicates computing the number of rectangles.
+    /*
     int numRects() const {
       return copied.numRects() + changed.numRects();
     }
+    */
   };
 
   class UpdateTracker {
@@ -59,31 +63,24 @@ namespace rfb {
     virtual void add_copied(const Region &dest, const Point &delta);
   protected:
     UpdateTracker* ut;
-    Region clipRect;
+    Rect clipRect;
   };
 
   class SimpleUpdateTracker : public UpdateTracker {
   public:
-    SimpleUpdateTracker(bool use_copyrect=true);
+    SimpleUpdateTracker();
     virtual ~SimpleUpdateTracker();
-
-    virtual void enable_copyrect(bool enable);
 
     virtual void add_changed(const Region &region);
     virtual void add_copied(const Region &dest, const Point &delta);
     virtual void subtract(const Region& region);
 
     // Fill the supplied UpdateInfo structure with update information
+    // FIXME: Provide getUpdateInfo() with no clipping, for better efficiency.
     virtual void getUpdateInfo(UpdateInfo* info, const Region& cliprgn);
 
     // Copy the contained updates to another tracker
     virtual void copyTo(UpdateTracker* to) const;
-
-
-    // Get the changed/copied regions
-    const Region& get_changed() const {return changed;}
-    const Region& get_copied() const {return copied;}
-    const Point& get_delta() const {return copy_delta;}
 
     // Move the entire update region by an offset
     void translate(const Point& p) {changed.translate(p); copied.translate(p);}
@@ -95,7 +92,6 @@ namespace rfb {
     Region changed;
     Region copied;
     Point copy_delta;
-    bool copy_enabled;
   };
 
 }

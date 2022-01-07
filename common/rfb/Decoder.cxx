@@ -1,4 +1,5 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
+ * Copyright 2014 Pierre Ossman for Cendio AB
  * 
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,53 +17,72 @@
  * USA.
  */
 #include <stdio.h>
-#include <rfb/Exception.h>
+#include <rfb/encodings.h>
+#include <rfb/Region.h>
 #include <rfb/Decoder.h>
 #include <rfb/RawDecoder.h>
+#include <rfb/CopyRectDecoder.h>
 #include <rfb/RREDecoder.h>
 #include <rfb/HextileDecoder.h>
 #include <rfb/ZRLEDecoder.h>
+#include <rfb/TightDecoder.h>
 
 using namespace rfb;
+
+Decoder::Decoder(enum DecoderFlags flags) : flags(flags)
+{
+}
 
 Decoder::~Decoder()
 {
 }
 
-DecoderCreateFnType Decoder::createFns[encodingMax+1] = { 0 };
-
-bool Decoder::supported(unsigned int encoding)
+void Decoder::getAffectedRegion(const Rect& rect, const void* buffer,
+                                size_t buflen, const ServerParams& server,
+                                Region* region)
 {
-  return encoding <= encodingMax && createFns[encoding];
+  region->reset(rect);
 }
 
-Decoder* Decoder::createDecoder(unsigned int encoding, CMsgReader* reader)
+bool Decoder::doRectsConflict(const Rect& rectA, const void* bufferA,
+                              size_t buflenA, const Rect& rectB,
+                              const void* bufferB, size_t buflenB,
+                              const ServerParams& server)
 {
-  if (encoding <= encodingMax && createFns[encoding])
-    return (*createFns[encoding])(reader);
-  return 0;
+  return false;
 }
 
-void Decoder::registerDecoder(unsigned int encoding,
-                              DecoderCreateFnType createFn)
+bool Decoder::supported(int encoding)
 {
-  if (encoding > encodingMax)
-    throw Exception("Decoder::registerDecoder: encoding out of range");
-
-  if (createFns[encoding])
-    fprintf(stderr,"Replacing existing decoder for encoding %s (%d)\n",
-            encodingName(encoding), encoding);
-  createFns[encoding] = createFn;
+  switch (encoding) {
+  case encodingRaw:
+  case encodingCopyRect:
+  case encodingRRE:
+  case encodingHextile:
+  case encodingZRLE:
+  case encodingTight:
+    return true;
+  default:
+    return false;
+  }
 }
 
-int DecoderInit::count = 0;
-
-DecoderInit::DecoderInit()
+Decoder* Decoder::createDecoder(int encoding)
 {
-  if (count++ != 0) return;
-
-  Decoder::registerDecoder(encodingRaw, RawDecoder::create);
-  Decoder::registerDecoder(encodingRRE, RREDecoder::create);
-  Decoder::registerDecoder(encodingHextile, HextileDecoder::create);
-  Decoder::registerDecoder(encodingZRLE, ZRLEDecoder::create);
+  switch (encoding) {
+  case encodingRaw:
+    return new RawDecoder();
+  case encodingCopyRect:
+    return new CopyRectDecoder();
+  case encodingRRE:
+    return new RREDecoder();
+  case encodingHextile:
+    return new HextileDecoder();
+  case encodingZRLE:
+    return new ZRLEDecoder();
+  case encodingTight:
+    return new TightDecoder();
+  default:
+    return NULL;
+  }
 }

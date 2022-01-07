@@ -1,5 +1,6 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * 
+ * Copyright (C) 2004-2008 Constantin Kaplinsky.  All Rights Reserved.
+ *    
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -15,239 +16,212 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
  * USA.
  */
+
+// FIXME: Check cases when screen width/height is not a multiply of 32.
+//        e.g. 800x600.
+
 #include <strings.h>
-#include <sys/time.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <errno.h>
+#include <pwd.h>
+
 #include <rfb/Logger_stdio.h>
 #include <rfb/LogWriter.h>
 #include <rfb/VNCServerST.h>
 #include <rfb/Configuration.h>
-#include <rfb/SSecurityFactoryStandard.h>
 #include <rfb/Timer.h>
 #include <network/TcpSocket.h>
-#include <tx/TXWindow.h>
+#include <network/UnixSocket.h>
 
-#include "QueryConnectDialog.h"
-#include "Image.h"
 #include <signal.h>
 #include <X11/X.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
-#ifdef HAVE_XTEST
-    #include <X11/extensions/XTest.h>
-#endif
 
-//#include <rfb/Encoder.h>
+#include <x0vncserver/XDesktop.h>
+#include <x0vncserver/Geometry.h>
+#include <x0vncserver/Image.h>
+#include <x0vncserver/PollingScheduler.h>
+
+extern char buildtime[];
 
 using namespace rfb;
-using namespace rdr;
 using namespace network;
 
-LogWriter vlog("main");
+static LogWriter vlog("Main");
 
+static const char* defaultDesktopName();
+
+IntParameter pollingCycle("PollingCycle", "Milliseconds per one polling "
+                          "cycle; actual interval may be dynamically "
+                          "adjusted to satisfy MaxProcessorUsage setting", 30);
+IntParameter maxProcessorUsage("MaxProcessorUsage", "Maximum percentage of "
+                               "CPU time to be consumed", 35);
+StringParameter desktopName("desktop", "Name of VNC desktop", defaultDesktopName());
 StringParameter displayname("display", "The X display", "");
 IntParameter rfbport("rfbport", "TCP port to listen for RFB protocol",5900);
-IntParameter queryConnectTimeout("QueryConnectTimeout",
-                                 "Number of seconds to show the Accept Connection dialog before "
-                                 "rejecting the connection",
-                                 10);
+StringParameter rfbunixpath("rfbunixpath", "Unix socket to listen for RFB protocol", "");
+IntParameter rfbunixmode("rfbunixmode", "Unix socket access mode", 0600);
+StringParameter hostsFile("HostsFile", "File with IP access control rules", "");
+BoolParameter localhostOnly("localhost",
+                            "Only allow connections from localhost",
+                            false);
+StringParameter interface("interface",
+                          "listen on the specified network address",
+                          "all");
 
-
-static void CleanupSignalHandler(int sig)
+static const char* defaultDesktopName()
 {
-  // CleanupSignalHandler allows C++ object cleanup to happen because it calls
-  // exit() rather than the default which is to abort.
-  fprintf(stderr,"CleanupSignalHandler called\n");
-  exit(1);
+  size_t host_max = sysconf(_SC_HOST_NAME_MAX);
+  if (host_max < 0)
+    return "";
+
+  std::vector<char> hostname(host_max + 1);
+  if (gethostname(hostname.data(), hostname.size()) == -1)
+    return "";
+
+  struct passwd* pwent = getpwuid(getuid());
+  if (pwent == NULL)
+    return "";
+
+  size_t len = snprintf(NULL, 0, "%s@%s", pwent->pw_name, hostname.data());
+  if (len < 0)
+    return "";
+
+  char* name = new char[len + 1];
+
+  snprintf(name, len + 1, "%s@%s", pwent->pw_name, hostname.data());
+
+  return name;
 }
 
 
-class QueryConnHandler : public VNCServerST::QueryConnectionHandler,
-                         public QueryResultCallback {
-public:
-  QueryConnHandler(Display* dpy, VNCServerST* vs)
-    : display(dpy), server(vs), queryConnectDialog(0), queryConnectSock(0) {}
-  ~QueryConnHandler() { delete queryConnectDialog; }
+//
+// Allow the main loop terminate itself gracefully on receiving a signal.
+//
 
-  // -=- VNCServerST::QueryConnectionHandler interface
-  virtual VNCServerST::queryResult queryConnection(network::Socket* sock,
-                                                   const char* userName,
-                                                   char** reason) {
-    if (queryConnectSock) {
-      *reason = strDup("Another connection is currently being queried.");
-      return VNCServerST::REJECT;
-    }
-    if (!userName) userName = "(anonymous)";
-    queryConnectSock = sock;
-    CharArray address(sock->getPeerAddress());
-    delete queryConnectDialog;
-    queryConnectDialog = new QueryConnectDialog(display, address.buf,
-                                                userName, queryConnectTimeout,
-                                                this);
-    queryConnectDialog->map();
-    return VNCServerST::PENDING;
-  }
+static bool caughtSignal = false;
 
-  // -=- QueryResultCallback interface
-  virtual void queryApproved() {
-    server->approveConnection(queryConnectSock, true, 0);
-    queryConnectSock = 0;
-  }
-  virtual void queryRejected() {
-    server->approveConnection(queryConnectSock, false,
-                              "Connection rejected by local user");
-    queryConnectSock = 0;
-  }
-private:
-  Display* display;
-  VNCServerST* server;
-  QueryConnectDialog* queryConnectDialog;
-  network::Socket* queryConnectSock;
-};
-
-
-class XDesktop : public SDesktop, public ColourMap,
-                 public Timer::Callback
+static void CleanupSignalHandler(int sig)
 {
+  caughtSignal = true;
+}
+
+
+class FileTcpFilter : public TcpFilter
+{
+
 public:
-  XDesktop(Display* dpy_)
-    : dpy(dpy_), pb(0), server(0), image(0), oldButtonMask(0),
-      haveXtest(false), pollTimer(this)
+
+  FileTcpFilter(const char *fname)
+    : TcpFilter("-"), fileName(NULL), lastModTime(0)
   {
-#ifdef HAVE_XTEST
-    int xtestEventBase;
-    int xtestErrorBase;
-    int major, minor;
-
-    if (XTestQueryExtension(dpy, &xtestEventBase,
-                            &xtestErrorBase, &major, &minor)) {
-      XTestGrabControl(dpy, True);
-      vlog.info("XTest extension present - version %d.%d",major,minor);
-      haveXtest = true;
-    } else {
-#endif
-      vlog.info("XTest extension not present");
-      vlog.info("unable to inject events or display while server is grabbed");
-#ifdef HAVE_XTEST
-	}
-#endif
-
-  }
-  virtual ~XDesktop() {
-    stop();
+    if (fname != NULL)
+      fileName = strdup((char *)fname);
   }
 
-  // -=- SDesktop interface
-
-  virtual void start(VNCServer* vs) {
-    int dpyWidth = DisplayWidth(dpy, DefaultScreen(dpy));
-    int dpyHeight = DisplayHeight(dpy, DefaultScreen(dpy));
-    Visual* vis = DefaultVisual(dpy, DefaultScreen(dpy));
-
-    image = new Image(dpy, dpyWidth, dpyHeight);
-    image->get(DefaultRootWindow(dpy));
-
-    pf.bpp = image->xim->bits_per_pixel;
-    pf.depth = image->xim->depth;
-    pf.bigEndian = (image->xim->byte_order == MSBFirst);
-    pf.trueColour = (vis->c_class == TrueColor);
-    pf.redShift   = ffs(vis->red_mask) - 1;
-    pf.greenShift = ffs(vis->green_mask) - 1;
-    pf.blueShift  = ffs(vis->blue_mask) - 1;
-    pf.redMax     = vis->red_mask   >> pf.redShift;
-    pf.greenMax   = vis->green_mask >> pf.greenShift;
-    pf.blueMax    = vis->blue_mask  >> pf.blueShift;
-
-    pb = new FullFramePixelBuffer(pf, dpyWidth, dpyHeight,
-                                  (rdr::U8*)image->xim->data, this);
-    server = vs;
-    server->setPixelBuffer(pb);
-    pollTimer.start(50);
+  virtual ~FileTcpFilter()
+  {
+    if (fileName != NULL)
+      free(fileName);
   }
 
-  virtual void stop() {
-    pollTimer.stop();
-    delete pb;
-    delete image;
+  virtual bool verifyConnection(Socket* s)
+  {
+    if (!reloadRules()) {
+      vlog.error("Could not read IP filtering rules: rejecting all clients");
+      filter.clear();
+      filter.push_back(parsePattern("-"));
+      return false;
+    }
+
+    return TcpFilter::verifyConnection(s);
   }
 
-  virtual void pointerEvent(const Point& pos, int buttonMask) {
-#ifdef HAVE_XTEST
-    if (!haveXtest) return;
-    XTestFakeMotionEvent(dpy, DefaultScreen(dpy), pos.x, pos.y, CurrentTime);
-    if (buttonMask != oldButtonMask) {
-      for (int i = 0; i < 5; i++) {
-	if ((buttonMask ^ oldButtonMask) & (1<<i)) {
-          if (buttonMask & (1<<i)) {
-            XTestFakeButtonEvent(dpy, i+1, True, CurrentTime);
-          } else {
-            XTestFakeButtonEvent(dpy, i+1, False, CurrentTime);
-          }
+protected:
+
+  bool reloadRules()
+  {
+    if (fileName == NULL)
+      return true;
+
+    struct stat st;
+    if (stat(fileName, &st) != 0)
+      return false;
+
+    if (st.st_mtime != lastModTime) {
+      // Actually reload only if the file was modified
+      FILE *fp = fopen(fileName, "r");
+      if (fp == NULL)
+        return false;
+
+      // Remove all the rules from the parent class
+      filter.clear();
+
+      // Parse the file contents adding rules to the parent class
+      char buf[32];
+      while (readLine(buf, 32, fp)) {
+        if (buf[0] && strchr("+-?", buf[0])) {
+          filter.push_back(parsePattern(buf));
         }
       }
-    }
-    oldButtonMask = buttonMask;
-#endif
-  }
 
-  virtual void keyEvent(rdr::U32 key, bool down) {
-#ifdef HAVE_XTEST
-    if (!haveXtest) return;
-    int keycode = XKeysymToKeycode(dpy, key);
-    if (keycode)
-      XTestFakeKeyEvent(dpy, keycode, down, CurrentTime);
-#endif
-  }
-
-  virtual void clientCutText(const char* str, int len) {
-  }
-
-  virtual Point getFbSize() {
-    return Point(pb->width(), pb->height());
-  }
-
-  // -=- ColourMap callbacks
-  virtual void lookup(int index, int* r, int* g, int* b) {
-    XColor xc;
-    xc.pixel = index;
-    if (index < DisplayCells(dpy,DefaultScreen(dpy))) {
-      XQueryColor(dpy, DefaultColormap(dpy,DefaultScreen(dpy)), &xc);
-    } else {
-      xc.red = xc.green = xc.blue = 0;
-    }
-    *r = xc.red;
-    *g = xc.green;
-    *b = xc.blue;
-  }
-
-  // -=- Timer::Callback interface
-  virtual bool handleTimeout(Timer* t) {
-    if (server->clientsReadyForUpdate()) {
-      image->get(DefaultRootWindow(dpy));
-      server->add_changed(pb->getRect());
-      server->tryUpdate();
+      fclose(fp);
+      lastModTime = st.st_mtime;
     }
     return true;
   }
 
 protected:
-  Display* dpy;
-  PixelFormat pf;
-  PixelBuffer* pb;
-  VNCServer* server;
-  Image* image;
-  int oldButtonMask;
-  bool haveXtest;
-  Timer pollTimer;
+
+  char *fileName;
+  time_t lastModTime;
+
+private:
+
+  //
+  // NOTE: we silently truncate long lines in this function.
+  //
+
+  bool readLine(char *buf, int bufSize, FILE *fp)
+  {
+    if (fp == NULL || buf == NULL || bufSize == 0)
+      return false;
+
+    if (fgets(buf, bufSize, fp) == NULL)
+      return false;
+
+    char *ptr = strchr(buf, '\n');
+    if (ptr != NULL) {
+      *ptr = '\0';              // remove newline at the end
+    } else {
+      if (!feof(fp)) {
+        int c;
+        do {                    // skip the rest of a long line
+          c = getc(fp);
+        } while (c != '\n' && c != EOF);
+      }
+    }
+    return true;
+  }
+
 };
 
 char* programName;
 
+static void printVersion(FILE *fp)
+{
+  fprintf(fp, "TigerVNC Server version %s, built %s\n",
+          PACKAGE_VERSION, buildtime);
+}
+
 static void usage()
 {
-  fprintf(stderr, "\nusage: %s [<parameters>]\n", programName);
+  printVersion(stderr);
+  fprintf(stderr, "\nUsage: %s [<parameters>]\n", programName);
+  fprintf(stderr, "       %s --version\n", programName);
   fprintf(stderr,"\n"
           "Parameters can be turned on with -<param> or off with -<param>=0\n"
           "Parameters which take a value can be specified as "
@@ -267,6 +241,13 @@ int main(int argc, char** argv)
   programName = argv[0];
   Display* dpy;
 
+  Configuration::enableServerParams();
+
+  // FIXME: We don't support clipboard yet
+  Configuration::removeParam("AcceptCutText");
+  Configuration::removeParam("SendCutText");
+  Configuration::removeParam("MaxCutText");
+
   for (int i = 1; i < argc; i++) {
     if (Configuration::setParam(argv[i]))
       continue;
@@ -278,6 +259,12 @@ int main(int argc, char** argv)
           continue;
         }
       }
+      if (strcmp(argv[i], "-v") == 0 ||
+          strcmp(argv[i], "-version") == 0 ||
+          strcmp(argv[i], "--version") == 0) {
+        printVersion(stdout);
+        return 0;
+      }
       usage();
     }
 
@@ -286,8 +273,9 @@ int main(int argc, char** argv)
 
   CharArray dpyStr(displayname.getData());
   if (!(dpy = XOpenDisplay(dpyStr.buf[0] ? dpyStr.buf : 0))) {
+    // FIXME: Why not vlog.error(...)?
     fprintf(stderr,"%s: unable to open display \"%s\"\r\n",
-            programName, XDisplayName(displayname.getData()));
+            programName, XDisplayName(dpyStr.buf));
     exit(1);
   }
 
@@ -295,78 +283,165 @@ int main(int argc, char** argv)
   signal(SIGINT, CleanupSignalHandler);
   signal(SIGTERM, CleanupSignalHandler);
 
+  std::list<SocketListener*> listeners;
+
   try {
     TXWindow::init(dpy,"x0vncserver");
-    XDesktop desktop(dpy);
-    VNCServerST server("x0vncserver", &desktop);
-    QueryConnHandler qcHandler(dpy, &server);
-    server.setQueryConnectionHandler(&qcHandler);
+    Geometry geo(DisplayWidth(dpy, DefaultScreen(dpy)),
+                 DisplayHeight(dpy, DefaultScreen(dpy)));
+    if (geo.getRect().is_empty()) {
+      vlog.error("Exiting with error");
+      return 1;
+    }
+    XDesktop desktop(dpy, &geo);
 
-    TcpListener listener((int)rfbport);
-    vlog.info("Listening on port %d", (int)rfbport);
+    VNCServerST server(desktopName, &desktop);
 
-    while (true) {
+    if (rfbunixpath.getValueStr()[0] != '\0') {
+      listeners.push_back(new network::UnixListener(rfbunixpath, rfbunixmode));
+      vlog.info("Listening on %s (mode %04o)", (const char*)rfbunixpath, (int)rfbunixmode);
+    }
+
+    if ((int)rfbport != -1) {
+      const char *addr = interface;
+      if (strcasecmp(addr, "all") == 0)
+        addr = 0;
+      if (localhostOnly)
+        createLocalTcpListeners(&listeners, (int)rfbport);
+      else
+        createTcpListeners(&listeners, addr, (int)rfbport);
+      vlog.info("Listening for VNC connections on %s interface(s), port %d",
+                localhostOnly ? "local" : (const char*)interface,
+                (int)rfbport);
+    }
+
+    const char *hostsData = hostsFile.getData();
+    FileTcpFilter fileTcpFilter(hostsData);
+    if (strlen(hostsData) != 0)
+      for (std::list<SocketListener*>::iterator i = listeners.begin();
+           i != listeners.end();
+           i++)
+        (*i)->setFilter(&fileTcpFilter);
+    delete[] hostsData;
+
+    PollingScheduler sched((int)pollingCycle, (int)maxProcessorUsage);
+
+    while (!caughtSignal) {
+      int wait_ms;
       struct timeval tv;
-      struct timeval* tvp = 0;
-      fd_set rfds;
+      fd_set rfds, wfds;
       std::list<Socket*> sockets;
       std::list<Socket*>::iterator i;
 
       // Process any incoming X events
       TXWindow::handleXEvents(dpy);
-      
-      // Process expired timers and get the time until the next one
-      int timeoutMs = Timer::checkTimeouts();
-      soonestTimeout(&timeoutMs, server.checkTimeouts());
-      if (timeoutMs) {
-        tv.tv_sec = timeoutMs / 1000;
-        tv.tv_usec = (timeoutMs % 1000) * 1000;
-        tvp = &tv;
-      }
-    
-      // Wait for X events, VNC traffic, or the next timer expiry
-      // NB: This code assumes that:
-      //   - removeSocket cannot cause the next timer to become sooner
-      //   - removeSocket cannot cause other sockets to shutdown()
+
       FD_ZERO(&rfds);
-      FD_SET(listener.getFd(), &rfds);
+      FD_ZERO(&wfds);
+
       FD_SET(ConnectionNumber(dpy), &rfds);
+      for (std::list<SocketListener*>::iterator i = listeners.begin();
+           i != listeners.end();
+           i++)
+        FD_SET((*i)->getFd(), &rfds);
+
       server.getSockets(&sockets);
+      int clients_connected = 0;
       for (i = sockets.begin(); i != sockets.end(); i++) {
         if ((*i)->isShutdown()) {
           server.removeSocket(*i);
           delete (*i);
         } else {
           FD_SET((*i)->getFd(), &rfds);
+          if ((*i)->outStream().hasBufferedData())
+            FD_SET((*i)->getFd(), &wfds);
+          clients_connected++;
         }
       }
-      
-      // If there are X requests pending then poll, don't wait!
-      if (XPending(dpy)) {
-        tv.tv_usec = tv.tv_sec = 0;
-        tvp = &tv;
+
+      if (!clients_connected)
+        sched.reset();
+
+      wait_ms = 0;
+
+      if (sched.isRunning()) {
+        wait_ms = sched.millisRemaining();
+        if (wait_ms > 500) {
+          wait_ms = 500;
+        }
       }
-      
+
+      soonestTimeout(&wait_ms, Timer::checkTimeouts());
+
+      tv.tv_sec = wait_ms / 1000;
+      tv.tv_usec = (wait_ms % 1000) * 1000;
+
       // Do the wait...
-      int n = select(FD_SETSIZE, &rfds, 0, 0, &tv);
-      if (n < 0) throw rdr::SystemException("select",errno);
+      sched.sleepStarted();
+      int n = select(FD_SETSIZE, &rfds, &wfds, 0,
+                     wait_ms ? &tv : NULL);
+      sched.sleepFinished();
+
+      if (n < 0) {
+        if (errno == EINTR) {
+          vlog.debug("Interrupted select() system call");
+          continue;
+        } else {
+          throw rdr::SystemException("select", errno);
+        }
+      }
 
       // Accept new VNC connections
-      if (FD_ISSET(listener.getFd(), &rfds)) {
-        Socket* sock = listener.accept();
-        if (sock) server.addSocket(sock);
+      for (std::list<SocketListener*>::iterator i = listeners.begin();
+           i != listeners.end();
+           i++) {
+        if (FD_ISSET((*i)->getFd(), &rfds)) {
+          Socket* sock = (*i)->accept();
+          if (sock) {
+            server.addSocket(sock);
+          } else {
+            vlog.status("Client connection rejected");
+          }
+        }
       }
+
+      Timer::checkTimeouts();
+
+      // Client list could have been changed.
+      server.getSockets(&sockets);
+
+      // Nothing more to do if there are no client connections.
+      if (sockets.empty())
+        continue;
 
       // Process events on existing VNC connections
       for (i = sockets.begin(); i != sockets.end(); i++) {
         if (FD_ISSET((*i)->getFd(), &rfds))
-          server.processSocketEvent(*i);
+          server.processSocketReadEvent(*i);
+        if (FD_ISSET((*i)->getFd(), &wfds))
+          server.processSocketWriteEvent(*i);
+      }
+
+      if (desktop.isRunning() && sched.goodTimeToPoll()) {
+        sched.newPass();
+        desktop.poll();
       }
     }
 
   } catch (rdr::Exception &e) {
-    vlog.error(e.str());
-  };
+    vlog.error("%s", e.str());
+    return 1;
+  }
 
+  TXWindow::handleXEvents(dpy);
+
+  // Run listener destructors; remove UNIX sockets etc
+  for (std::list<SocketListener*>::iterator i = listeners.begin();
+       i != listeners.end();
+       i++) {
+    delete *i;
+  }
+
+  vlog.info("Terminated");
   return 0;
 }

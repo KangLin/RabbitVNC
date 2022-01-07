@@ -1,4 +1,5 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
+ * Copyright 2011-2019 Pierre Ossman for Cendio AB
  * 
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,18 +21,19 @@
 //
 // The SDisplay class encapsulates a particular system display.
 
+#include <assert.h>
+
 #include <rfb_win32/SDisplay.h>
 #include <rfb_win32/Service.h>
 #include <rfb_win32/TsSessions.h>
 #include <rfb_win32/CleanDesktop.h>
 #include <rfb_win32/CurrentUser.h>
-#include <rfb_win32/DynamicFn.h>
 #include <rfb_win32/MonitorInfo.h>
 #include <rfb_win32/SDisplayCorePolling.h>
 #include <rfb_win32/SDisplayCoreWMHooks.h>
-#include <rfb_win32/SDisplayCoreDriver.h>
 #include <rfb/Exception.h>
 #include <rfb/LogWriter.h>
+#include <rfb/ledStates.h>
 
 
 using namespace rdr;
@@ -43,7 +45,7 @@ static LogWriter vlog("SDisplay");
 // - SDisplay-specific configuration options
 
 IntParameter rfb::win32::SDisplay::updateMethod("UpdateMethod",
-  "How to discover desktop updates; 0 - Polling, 1 - Application hooking, 2 - Driver hooking.", 1);
+  "How to discover desktop updates; 0 - Polling, 1 - Application hooking, 2 - Driver hooking.", 0);
 BoolParameter rfb::win32::SDisplay::disableLocalInputs("DisableLocalInputs",
   "Disable local keyboard and pointer input while the server is in use", false);
 StringParameter rfb::win32::SDisplay::disconnectAction("DisconnectAction",
@@ -52,8 +54,6 @@ StringParameter displayDevice("DisplayDevice",
   "Display device name of the monitor to be remoted, or empty to export the whole desktop.", "");
 BoolParameter rfb::win32::SDisplay::removeWallpaper("RemoveWallpaper",
   "Remove the desktop wallpaper when the server is in use.", false);
-BoolParameter rfb::win32::SDisplay::removePattern("RemovePattern",
-  "Remove the desktop background pattern when the server is in use.", false);
 BoolParameter rfb::win32::SDisplay::disableEffects("DisableEffects",
   "Disable desktop user interface effects when the server is in use.", false);
 
@@ -63,18 +63,16 @@ BoolParameter rfb::win32::SDisplay::disableEffects("DisableEffects",
 // SDisplay
 //
 
-typedef BOOL (WINAPI *_LockWorkStation_proto)();
-DynamicFn<_LockWorkStation_proto> _LockWorkStation(_T("user32.dll"), "LockWorkStation");
-
 // -=- Constructor/Destructor
 
 SDisplay::SDisplay()
   : server(0), pb(0), device(0),
     core(0), ptr(0), kbd(0), clipboard(0),
     inputs(0), monitor(0), cleanDesktop(0), cursor(0),
-    statusLocation(0)
+    statusLocation(0), queryConnectionHandler(0), ledState(0)
 {
   updateEvent.h = CreateEvent(0, TRUE, FALSE, 0);
+  terminateEvent.h = CreateEvent(0, TRUE, FALSE, 0);
 }
 
 SDisplay::~SDisplay()
@@ -128,10 +126,7 @@ void SDisplay::stop()
       if (!cut.h) {
         vlog.info("ignoring DisconnectAction=Lock - no current user");
       } else {
-        if (_LockWorkStation.isValid())
-          (*_LockWorkStation)();
-        else
-          ExitWindowsEx(EWX_LOGOFF, 0);
+        LockWorkStation();
       }
     }
   }
@@ -145,6 +140,25 @@ void SDisplay::stop()
   vlog.debug("stopped");
 
   if (statusLocation) *statusLocation = false;
+}
+
+void SDisplay::terminate()
+{
+  SetEvent(terminateEvent);
+}
+
+
+void SDisplay::queryConnection(network::Socket* sock,
+                               const char* userName)
+{
+  assert(server != NULL);
+
+  if (queryConnectionHandler) {
+    queryConnectionHandler->queryConnection(sock, userName);
+    return;
+  }
+
+  server->approveConnection(sock, true);
 }
 
 
@@ -173,9 +187,7 @@ void SDisplay::startCore() {
   int tryMethod = updateMethod_;
   while (!core) {
     try {
-      if (tryMethod == 2)
-        core = new SDisplayCoreDriver(this, &updates);
-      else if (tryMethod == 1)
+      if (tryMethod == 1)
         core = new SDisplayCoreWMHooks(this, &updates);
       else
         core = new SDisplayCorePolling(this, &updates);
@@ -185,7 +197,7 @@ void SDisplay::startCore() {
       if (tryMethod == 0)
         throw rdr::Exception("unable to access desktop");
       tryMethod--;
-      vlog.error(e.str());
+      vlog.error("%s", e.str());
     }
   }
   vlog.info("Started %s", core->methodName());
@@ -202,15 +214,16 @@ void SDisplay::startCore() {
 
   // Apply desktop optimisations
   cleanDesktop = new CleanDesktop;
-  if (removePattern)
-    cleanDesktop->disablePattern();
   if (removeWallpaper)
     cleanDesktop->disableWallpaper();
   if (disableEffects)
     cleanDesktop->disableEffects();
   isWallpaperRemoved = removeWallpaper;
-  isPatternRemoved = removePattern;
   areEffectsDisabled = disableEffects;
+
+  checkLedState();
+  if (server)
+    server->setLEDState(ledState);
 }
 
 void SDisplay::stopCore() {
@@ -227,15 +240,6 @@ void SDisplay::stopCore() {
   delete cleanDesktop; cleanDesktop = 0;
   delete cursor; cursor = 0;
   ResetEvent(updateEvent);
-}
-
-
-bool SDisplay::areHooksAvailable() {
-  return WMHooks::areAvailable();
-}
-
-bool SDisplay::isDriverAvailable() {
-  return SDisplayCoreDriver::isAvailable();
 }
 
 
@@ -262,7 +266,6 @@ bool SDisplay::isRestartRequired() {
   // - Check that the desktop optimisation settings haven't changed
   //   This isn't very efficient, but it shouldn't change very often!
   if ((isWallpaperRemoved != removeWallpaper) ||
-      (isPatternRemoved != removePattern) ||
       (areEffectsDisabled != disableEffects))
     return true;
 
@@ -289,6 +292,22 @@ void SDisplay::restartCore() {
 }
 
 
+void SDisplay::handleClipboardRequest() {
+  CharArray data(clipboard->getClipText());
+  server->sendClipboardData(data.buf);
+}
+
+void SDisplay::handleClipboardAnnounce(bool available) {
+  // FIXME: Wait for an application to actually request it
+  if (available)
+    server->requestClipboard();
+}
+
+void SDisplay::handleClipboardData(const char* data) {
+  clipboard->setClipText(data);
+}
+
+
 void SDisplay::pointerEvent(const Point& pos, int buttonmask) {
   if (pb->getRect().contains(pos)) {
     Point screenPos = pos.translate(screenRect.tl);
@@ -300,47 +319,38 @@ void SDisplay::pointerEvent(const Point& pos, int buttonmask) {
   }
 }
 
-void SDisplay::keyEvent(rdr::U32 key, bool down) {
+void SDisplay::keyEvent(rdr::U32 keysym, rdr::U32 keycode, bool down) {
   // - Check that the SDesktop doesn't need restarting
   if (isRestartRequired())
     restartCore();
   if (kbd)
-    kbd->keyEvent(key, down);
+    kbd->keyEvent(keysym, keycode, down);
 }
 
-void SDisplay::clientCutText(const char* text, int len) {
-  CharArray clip_sz(len+1);
-  memcpy(clip_sz.buf, text, len);
-  clip_sz.buf[len] = 0;
-  clipboard->setClipText(clip_sz.buf);
-}
+bool SDisplay::checkLedState() {
+  unsigned state = 0;
 
+  if (GetKeyState(VK_SCROLL) & 0x0001)
+    state |= ledScrollLock;
+  if (GetKeyState(VK_NUMLOCK) & 0x0001)
+    state |= ledNumLock;
+  if (GetKeyState(VK_CAPITAL) & 0x0001)
+    state |= ledCapsLock;
 
-void SDisplay::framebufferUpdateRequest()
-{
-  SetEvent(updateEvent);
-}
+  if (ledState != state) {
+    ledState = state;
+    return true;
+  }
 
-Point SDisplay::getFbSize() {
-  bool startAndStop = !core;
-
-  // If not started, do minimal initialisation to get desktop size.
-  if (startAndStop)
-    recreatePixelBuffer();
-  Point result = Point(pb->width(), pb->height());
-
-  // Destroy the initialised structures.
-  if (startAndStop)
-    stopCore();
-  return result;
+  return false;
 }
 
 
 void
-SDisplay::notifyClipboardChanged(const char* text, int len) {
+SDisplay::notifyClipboardChanged(bool available) {
   vlog.debug("clipboard text changed");
   if (server)
-    server->serverCutText(text, len);
+    server->announceClipboard(available);
 }
 
 
@@ -354,12 +364,6 @@ SDisplay::notifyDisplayEvent(WMMonitor::Notifier::DisplayEventType evt) {
   case WMMonitor::Notifier::DisplayPixelFormatChanged:
     vlog.debug("desktop format changed");
     recreatePixelBuffer();
-    break;
-  case WMMonitor::Notifier::DisplayColourMapChanged:
-    vlog.debug("desktop colourmap changed");
-    pb->updateColourMap();
-    if (server)
-      server->setColourMapEntries();
     break;
   default:
     vlog.error("unknown display event received");
@@ -382,9 +386,7 @@ SDisplay::processEvent(HANDLE event) {
     inputs->blockInputs(disableLocalInputs);
 
     // - Only process updates if the server is ready
-    if (server && server->clientsReadyForUpdate()) {
-      bool try_update = false;
-
+    if (server) {
       // - Check that the SDesktop doesn't need restarting
       if (isRestartRequired()) {
         restartCore();
@@ -395,7 +397,7 @@ SDisplay::processEvent(HANDLE event) {
       try {
         core->flushUpdates();
       } catch (rdr::Exception& e) {
-        vlog.error(e.str());
+        vlog.error("%s", e.str());
         restartCore();
         return;
       }
@@ -415,17 +417,17 @@ SDisplay::processEvent(HANDLE event) {
         // Update the cursor position
         // NB: First translate from Screen coordinates to Desktop
         Point desktopPos = info.position.translate(screenRect.tl.negate());
-        server->setCursorPos(desktopPos);
-        try_update = true;
+        server->setCursorPos(desktopPos, false);
 
         old_cursor = info;
       }
 
       // Flush any changes to the server
-      try_update = flushChangeTracker() || try_update;
-      if (try_update) {
-        server->tryUpdate();
-      }
+      flushChangeTracker();
+
+      // Forward current LED state to the server
+      if (checkLedState())
+        server->setLEDState(ledState);
     }
     return;
   }

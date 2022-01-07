@@ -23,40 +23,43 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <assert.h>
+
 #include <rfb/CConnection.h>
-#include <rfb/UserPasswdGetter.h>
 #include <rfb/Password.h>
 #include <rfb/CSecurityVncAuth.h>
 #include <rfb/util.h>
+#include <rfb/Security.h>
 extern "C" {
 #include <rfb/d3des.h>
 }
 
+#include <rdr/InStream.h>
+#include <rdr/OutStream.h>
 
 using namespace rfb;
 
 static const int vncAuthChallengeSize = 16;
+CSecurityVncAuth::CSecurityVncAuth(CConnection* cc, UserPasswdGetter* upg)
+    : CSecurity(cc),
+    upg(upg)
+{}
 
-
-CSecurityVncAuth::CSecurityVncAuth(UserPasswdGetter* upg_)
-  : upg(upg_)
-{
-}
-
-CSecurityVncAuth::~CSecurityVncAuth()
-{
-}
-
-bool CSecurityVncAuth::processMsg(CConnection* cc)
+bool CSecurityVncAuth::processMsg()
 {
   rdr::InStream* is = cc->getInStream();
   rdr::OutStream* os = cc->getOutStream();
+
+  if (!is->hasData(vncAuthChallengeSize))
+    return false;
 
   // Read the challenge & obtain the user's password
   rdr::U8 challenge[vncAuthChallengeSize];
   is->readBytes(challenge, vncAuthChallengeSize);
   PlainPasswd passwd;
-  upg->getUserPasswd(0, &passwd.buf);
+  
+  assert(upg != NULL); /* (upg == NULL) means bug in the viewer, please call SecurityClient::setUserPasswdGetter */
+  upg->getUserPasswd(cc->isSecure(), 0, &passwd.buf);
 
   // Calculate the correct response
   rdr::U8 key[8];

@@ -20,7 +20,6 @@
 
 #include <rfb_win32/Registry.h>
 #include <rfb_win32/Security.h>
-#include <rfb_win32/DynamicFn.h>
 #include <rdr/MemOutStream.h>
 #include <rdr/HexOutStream.h>
 #include <rdr/HexInStream.h>
@@ -51,7 +50,7 @@ RegKey::RegKey(const HKEY k) : key(0), freeKey(false), valueNameBufLen(0) {
   LONG result = RegOpenKeyEx(k, 0, 0, KEY_ALL_ACCESS, &key);
   if (result != ERROR_SUCCESS)
     throw rdr::SystemException("RegOpenKeyEx(HKEY)", result);
-  vlog.debug("duplicated %x to %x", k, key);
+  vlog.debug("duplicated %p to %p", k, key);
   freeKey = true;
 }
 
@@ -59,7 +58,7 @@ RegKey::RegKey(const RegKey& k) : key(0), freeKey(false), valueNameBufLen(0) {
   LONG result = RegOpenKeyEx(k.key, 0, 0, KEY_ALL_ACCESS, &key);
   if (result != ERROR_SUCCESS)
     throw rdr::SystemException("RegOpenKeyEx(RegKey&)", result);
-  vlog.debug("duplicated %x to %x", k.key, key);
+  vlog.debug("duplicated %p to %p", k.key, key);
   freeKey = true;
 }
 
@@ -69,7 +68,7 @@ RegKey::~RegKey() {
 
 
 void RegKey::setHKEY(HKEY k, bool fK) {
-  vlog.debug("setHKEY(%x,%d)", k, (int)fK);
+  vlog.debug("setHKEY(%p,%d)", k, (int)fK);
   close();
   freeKey = fK;
   key = k;
@@ -80,10 +79,10 @@ bool RegKey::createKey(const RegKey& root, const TCHAR* name) {
   close();
   LONG result = RegCreateKey(root.key, name, &key);
   if (result != ERROR_SUCCESS) {
-    vlog.error("RegCreateKey(%x, %s): %x", root.key, name, result);
+    vlog.error("RegCreateKey(%p, %s): %lx", root.key, name, result);
     throw rdr::SystemException("RegCreateKeyEx", result);
   }
-  vlog.debug("createKey(%x,%s) = %x", root.key, (const char*)CStr(name), key);
+  vlog.debug("createKey(%p,%s) = %p", root.key, (const char*)CStr(name), key);
   freeKey = true;
   return true;
 }
@@ -93,18 +92,14 @@ void RegKey::openKey(const RegKey& root, const TCHAR* name, bool readOnly) {
   LONG result = RegOpenKeyEx(root.key, name, 0, readOnly ? KEY_READ : KEY_ALL_ACCESS, &key);
   if (result != ERROR_SUCCESS)
     throw rdr::SystemException("RegOpenKeyEx (open)", result);
-  vlog.debug("openKey(%x,%s,%s) = %x", root.key, (const char*)CStr(name),
+  vlog.debug("openKey(%p,%s,%s) = %p", root.key, (const char*)CStr(name),
 	         readOnly ? "ro" : "rw", key);
   freeKey = true;
 }
 
 void RegKey::setDACL(const PACL acl, bool inherit) {
   DWORD result;
-  typedef DWORD (WINAPI *_SetSecurityInfo_proto) (HANDLE, SE_OBJECT_TYPE, SECURITY_INFORMATION, PSID, PSID, PACL, PACL);
-  DynamicFn<_SetSecurityInfo_proto> _SetSecurityInfo(_T("advapi32.dll"), "SetSecurityInfo");
-  if (!_SetSecurityInfo.isValid())
-    throw rdr::SystemException("RegKey::setDACL failed", ERROR_CALL_NOT_IMPLEMENTED);
-  if ((result = (*_SetSecurityInfo)(key, SE_REGISTRY_KEY,
+  if ((result = SetSecurityInfo(key, SE_REGISTRY_KEY,
     DACL_SECURITY_INFORMATION |
     (inherit ? UNPROTECTED_DACL_SECURITY_INFORMATION : PROTECTED_DACL_SECURITY_INFORMATION),
     0, 0, acl, 0)) != ERROR_SUCCESS)
@@ -113,7 +108,7 @@ void RegKey::setDACL(const PACL acl, bool inherit) {
 
 void RegKey::close() {
   if (freeKey) {
-    vlog.debug("RegCloseKey(%x)", key);
+    vlog.debug("RegCloseKey(%p)", key);
     RegCloseKey(key);
     key = 0;
   }
@@ -151,7 +146,7 @@ void RegKey::setString(const TCHAR* valname, const TCHAR* value) const {
   if (result != ERROR_SUCCESS) throw rdr::SystemException("setString", result);
 }
 
-void RegKey::setBinary(const TCHAR* valname, const void* value, int length) const {
+void RegKey::setBinary(const TCHAR* valname, const void* value, size_t length) const {
   LONG result = RegSetValueEx(key, valname, 0, REG_BINARY, (const BYTE*)value, length);
   if (result != ERROR_SUCCESS) throw rdr::SystemException("setBinary", result);
 }
@@ -169,20 +164,20 @@ TCHAR* RegKey::getString(const TCHAR* valname) const {return getRepresentation(v
 TCHAR* RegKey::getString(const TCHAR* valname, const TCHAR* def) const {
   try {
     return getString(valname);
-  } catch(rdr::Exception) {
+  } catch(rdr::Exception&) {
     return tstrDup(def);
   }
 }
 
-void RegKey::getBinary(const TCHAR* valname, void** data, int* length) const {
+void RegKey::getBinary(const TCHAR* valname, void** data, size_t* length) const {
   TCharArray hex(getRepresentation(valname));
   if (!rdr::HexInStream::hexStrToBin(CStr(hex.buf), (char**)data, length))
     throw rdr::Exception("getBinary failed");
 }
-void RegKey::getBinary(const TCHAR* valname, void** data, int* length, void* def, int deflen) const {
+void RegKey::getBinary(const TCHAR* valname, void** data, size_t* length, void* def, size_t deflen) const {
   try {
     getBinary(valname, data, length);
-  } catch(rdr::Exception) {
+  } catch(rdr::Exception&) {
     if (deflen) {
       *data = new char[deflen];
       memcpy(*data, def, deflen);
@@ -199,7 +194,7 @@ int RegKey::getInt(const TCHAR* valname) const {
 int RegKey::getInt(const TCHAR* valname, int def) const {
   try {
     return getInt(valname);
-  } catch(rdr::Exception) {
+  } catch(rdr::Exception&) {
     return def;
   }
 }
@@ -246,7 +241,7 @@ TCHAR* RegKey::getRepresentation(const TCHAR* valname) const {
   case REG_DWORD:
     {
       TCharArray tmp(16);
-      _stprintf(tmp.buf, _T("%u"), *((DWORD*)data.buf));
+      _stprintf(tmp.buf, _T("%lu"), *((DWORD*)data.buf));
       return tmp.takeBuf();
     }
   case REG_EXPAND_SZ:
@@ -259,7 +254,7 @@ TCHAR* RegKey::getRepresentation(const TCHAR* valname) const {
       TCharArray result(required);
       length = ExpandEnvironmentStrings(str.buf, result.buf, required);
       if (required<length)
-        rdr::Exception("unable to expand environment strings");
+        throw rdr::Exception("unable to expand environment strings");
       return result.takeBuf();
     } else {
       return tstrDup(_T(""));
@@ -274,7 +269,7 @@ bool RegKey::isValue(const TCHAR* valname) const {
   try {
     TCharArray tmp(getRepresentation(valname));
     return true;
-  } catch(rdr::Exception) {
+  } catch(rdr::Exception&) {
     return false;
   }
 }

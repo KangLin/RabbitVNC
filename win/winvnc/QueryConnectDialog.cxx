@@ -16,8 +16,8 @@
  * USA.
  */
 
-#include <winvnc/QueryConnectDialog.h>
 #include <winvnc/VNCServerWin32.h>
+#include <winvnc/QueryConnectDialog.h>
 #include <winvnc/resource.h>
 #include <rfb_win32/Win32Util.h>
 #include <rfb_win32/TCharArray.h>
@@ -41,7 +41,7 @@ static IntParameter timeout("QueryConnectTimeout",
 QueryConnectDialog::QueryConnectDialog(network::Socket* sock_,
                                        const char* userName_,
                                        VNCServerWin32* s)
-: Thread("QueryConnectDialog"), Dialog(GetModuleHandle(0)),
+: Dialog(GetModuleHandle(0)),
   sock(sock_), approve(false), server(s) {
   peerIp.buf = sock->getPeerAddress();
   userName.buf = strDup(userName_);
@@ -54,7 +54,7 @@ void QueryConnectDialog::startDialog() {
 
 // - Thread overrides
 
-void QueryConnectDialog::run() {
+void QueryConnectDialog::worker() {
   countdown = timeout;
   try {
     if (desktopChangeRequired() && !changeDesktop())

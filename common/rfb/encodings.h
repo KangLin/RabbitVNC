@@ -1,4 +1,5 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
+ * Copyeight (C) 2011 D. R. Commander.  All Rights Reserved.
  * 
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,19 +21,53 @@
 
 namespace rfb {
 
-  const unsigned int encodingRaw = 0;
-  const unsigned int encodingCopyRect = 1;
-  const unsigned int encodingRRE = 2;
-  const unsigned int encodingCoRRE = 4;
-  const unsigned int encodingHextile = 5;
-  const unsigned int encodingZRLE = 16;
+  const int encodingRaw = 0;
+  const int encodingCopyRect = 1;
+  const int encodingRRE = 2;
+  const int encodingCoRRE = 4;
+  const int encodingHextile = 5;
+  const int encodingTight = 7;
+  const int encodingZRLE = 16;
 
-  const unsigned int encodingMax = 255;
+  const int encodingMax = 255;
 
-  const unsigned int pseudoEncodingCursor = 0xffffff11;
-  const unsigned int pseudoEncodingDesktopSize = 0xffffff21;
+  const int pseudoEncodingXCursor = -240;
+  const int pseudoEncodingCursor = -239;
+  const int pseudoEncodingDesktopSize = -223;
+  const int pseudoEncodingLEDState = -261;
+  const int pseudoEncodingExtendedDesktopSize = -308;
+  const int pseudoEncodingDesktopName = -307;
+  const int pseudoEncodingFence = -312;
+  const int pseudoEncodingContinuousUpdates = -313;
+  const int pseudoEncodingCursorWithAlpha = -314;
+  const int pseudoEncodingQEMUKeyEvent = -258;
+
+  // TightVNC-specific
+  const int pseudoEncodingLastRect = -224;
+  const int pseudoEncodingQualityLevel0 = -32;
+  const int pseudoEncodingQualityLevel9 = -23;
+  const int pseudoEncodingCompressLevel0 = -256;
+  const int pseudoEncodingCompressLevel9 = -247;
+
+  // TurboVNC-specific
+  const int pseudoEncodingFineQualityLevel0 = -512;
+  const int pseudoEncodingFineQualityLevel100 = -412;
+  const int pseudoEncodingSubsamp1X = -768;
+  const int pseudoEncodingSubsamp4X = -767;
+  const int pseudoEncodingSubsamp2X = -766;
+  const int pseudoEncodingSubsampGray = -765;
+  const int pseudoEncodingSubsamp8X = -764;
+  const int pseudoEncodingSubsamp16X = -763;
+
+  // VMware-specific
+  const int pseudoEncodingVMwareCursor = 0x574d5664;
+  const int pseudoEncodingVMwareCursorPosition = 0x574d5666;
+  const int pseudoEncodingVMwareLEDState = 0x574d5668;
+
+  // UltraVNC-specific
+  const int pseudoEncodingExtendedClipboard = 0xC0A1E5CE;
 
   int encodingNum(const char* name);
-  const char* encodingName(unsigned int num);
+  const char* encodingName(int num);
 }
 #endif

@@ -1,4 +1,5 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
+ * Copyright 2014 Pierre Ossman for Cendio AB
  * 
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,29 +25,27 @@
 #ifndef __RFB_PIXEL_BUFFER_H__
 #define __RFB_PIXEL_BUFFER_H__
 
-#include <rfb/ImageGetter.h>
 #include <rfb/PixelFormat.h>
-#include <rfb/ColourMap.h>
 #include <rfb/Rect.h>
 #include <rfb/Pixel.h>
+#include <rfb/util.h>
 
 namespace rfb {
 
   class Region;
 
-  class PixelBuffer : public ImageGetter {
+  class PixelBuffer {
   public:
-    PixelBuffer(const PixelFormat& pf, int width, int height, ColourMap* cm);
+    PixelBuffer(const PixelFormat& pf, int width, int height);
     virtual ~PixelBuffer();
 
     ///////////////////////////////////////////////
     // Format / Layout
     //
 
-    // Set/get pixel format & colourmap
-    virtual void setPF(const PixelFormat &pf);
-    virtual const PixelFormat &getPF() const;
-    virtual ColourMap* getColourMap() const;
+  public:
+    // Get pixel format
+    const PixelFormat &getPF() const { return format; }
 
     // Get width, height and number of pixels
     int width()  const { return width_; }
@@ -67,16 +66,18 @@ namespace rfb {
     // Get a pointer into the buffer
     //   The pointer is to the top-left pixel of the specified Rect.
     //   The buffer stride (in pixels) is returned.
-    virtual const rdr::U8* getPixelsR(const Rect& r, int* stride) = 0;
+    virtual const rdr::U8* getBuffer(const Rect& r, int* stride) const = 0;
 
     // Get pixel data for a given part of the buffer
     //   Data is copied into the supplied buffer, with the specified
-    //   stride.
-    virtual void getImage(void* imageBuf, const Rect& r, int stride=0);
-
-    // Get the data at (x,y) as a Pixel.
-    //   VERY INEFFICIENT!!!
-    // *** Pixel getPixel(const Point& p);
+    //   stride. Try to avoid using this though as getBuffer() will in
+    //   most cases avoid the extra memory copy.
+    void getImage(void* imageBuf, const Rect& r, int stride=0) const;
+    // Get pixel data in a given format
+    //   Works just the same as getImage(), but guaranteed to be in a
+    //   specific format.
+    void getImage(const PixelFormat& pf, void* imageBuf,
+                  const Rect& r, int stride=0) const;
 
     ///////////////////////////////////////////////
     // Framebuffer update methods
@@ -85,61 +86,87 @@ namespace rfb {
     // Ensure that the specified rectangle of buffer is up to date.
     //   Overridden by derived classes implementing framebuffer access
     //   to copy the required display data into place.
-    virtual void grabRegion(const Region& region) {}
+    virtual void grabRegion(const Region& __unused_attr region) {}
 
   protected:
     PixelBuffer();
+    virtual void setSize(int width, int height);
+
+  protected:
     PixelFormat format;
+
+  private:
     int width_, height_;
-    ColourMap* colourmap;
   };
 
-  // FullFramePixelBuffer
-
-  class FullFramePixelBuffer : public PixelBuffer {
+  // ModifiablePixelBuffer
+  class ModifiablePixelBuffer : public PixelBuffer {
   public:
-    FullFramePixelBuffer(const PixelFormat& pf, int width, int height,
-                         rdr::U8* data_, ColourMap* cm);
-    virtual ~FullFramePixelBuffer();
+    ModifiablePixelBuffer(const PixelFormat& pf, int width, int height);
+    virtual ~ModifiablePixelBuffer();
 
-    // - Get the number of pixels per row in the actual pixel buffer data area
-    //   This may in some cases NOT be the same as width().
-    virtual int getStride() const;
+    ///////////////////////////////////////////////
+    // Access to pixel data
+    //
 
-    // Get a pointer to specified pixel data
-    virtual rdr::U8* getPixelsRW(const Rect& r, int* stride);
-    virtual const rdr::U8* getPixelsR(const Rect& r, int* stride) {
-      return getPixelsRW(r, stride);
-    }
+    // Get a writeable pointer into the buffer
+    //   Like getBuffer(), the pointer is to the top-left pixel of the
+    //   specified Rect and the stride in pixels is returned.
+    virtual rdr::U8* getBufferRW(const Rect& r, int* stride) = 0;
+    // Commit the modified contents
+    //   Ensures that the changes to the specified Rect is properly
+    //   stored away and any temporary buffers are freed. The Rect given
+    //   here needs to match the Rect given to the earlier call to
+    //   getBufferRW().
+    virtual void commitBufferRW(const Rect& r) = 0;
 
     ///////////////////////////////////////////////
     // Basic rendering operations
     // These operations DO NOT clip to the pixelbuffer area, or trap overruns.
 
     // Fill a rectangle
-    virtual void fillRect(const Rect &dest, Pixel pix);
+    void fillRect(const Rect &dest, const void* pix);
 
     // Copy pixel data to the buffer
-    virtual void imageRect(const Rect &dest, const void* pixels, int stride=0);
+    void imageRect(const Rect &dest, const void* pixels, int stride=0);
 
     // Copy pixel data from one PixelBuffer location to another
-    virtual void copyRect(const Rect &dest, const Point &move_by_delta);
+    void copyRect(const Rect &dest, const Point& move_by_delta);
 
-    // Copy pixel data to the buffer through a mask
-    //   pixels is a pointer to the pixel to be copied to r.tl.
-    //   maskPos specifies the pixel offset in the mask to start from.
-    //   mask_ is a pointer to the mask bits at (0,0).
-    //   pStride and mStride are the strides of the pixel and mask buffers.
-    virtual void maskRect(const Rect& r, const void* pixels, const void* mask_);
+    // Render in a specific format
+    //   Does the exact same thing as the above methods, but the given
+    //   pixel values are defined by the given PixelFormat.
+    void fillRect(const PixelFormat& pf, const Rect &dest, const void* pix);
+    void imageRect(const PixelFormat& pf, const Rect &dest,
+                   const void* pixels, int stride=0);
 
-    //   pixel is the Pixel value to be used where mask_ is set
-    virtual void maskRect(const Rect& r, Pixel pixel, const void* mask_);
+  protected:
+    ModifiablePixelBuffer();
+  };
 
-    // *** Should this be visible?
-    rdr::U8* data;
+  // FullFramePixelBuffer
+
+  class FullFramePixelBuffer : public ModifiablePixelBuffer {
+  public:
+    FullFramePixelBuffer(const PixelFormat& pf, int width, int height,
+                         rdr::U8* data_, int stride);
+    virtual ~FullFramePixelBuffer();
+
+  public:
+    virtual const rdr::U8* getBuffer(const Rect& r, int* stride) const;
+    virtual rdr::U8* getBufferRW(const Rect& r, int* stride);
+    virtual void commitBufferRW(const Rect& r);
 
   protected:
     FullFramePixelBuffer();
+    virtual void setBuffer(int width, int height, rdr::U8* data, int stride);
+
+  private:
+    virtual void setSize(int w, int h);
+
+  private:
+    rdr::U8* data;
+    int stride;
   };
 
   // -=- Managed pixel buffer class
@@ -155,16 +182,9 @@ namespace rfb {
     virtual void setPF(const PixelFormat &pf);
     virtual void setSize(int w, int h);
 
-    // Assign a colour map to the buffer
-    virtual void setColourMap(ColourMap* cm, bool own_cm);
-
-    // Return the total number of bytes of pixel data in the buffer
-    int dataLen() const { return width_ * height_ * (format.bpp/8); }
-
-  protected:
+  private:
+    rdr::U8* data_; // Mirrors FullFramePixelBuffer::data
     unsigned long datasize;
-    bool own_colourmap;
-    void checkDataSize();
   };
 
 };

@@ -16,10 +16,9 @@
  * USA.
  */
 #include <string.h>
-#ifdef _WIN32
-#define strcasecmp _stricmp
-#endif
+#include <os/os.h>
 #include <rfb/encodings.h>
+#include <rfb/util.h>
 
 int rfb::encodingNum(const char* name)
 {
@@ -29,10 +28,11 @@ int rfb::encodingNum(const char* name)
   if (strcasecmp(name, "CoRRE") == 0)    return encodingCoRRE;
   if (strcasecmp(name, "hextile") == 0)  return encodingHextile;
   if (strcasecmp(name, "ZRLE") == 0)     return encodingZRLE;
+  if (strcasecmp(name, "Tight") == 0)    return encodingTight;
   return -1;
 }
 
-const char* rfb::encodingName(unsigned int num)
+const char* rfb::encodingName(int num)
 {
   switch (num) {
   case encodingRaw:      return "raw";
@@ -41,6 +41,7 @@ const char* rfb::encodingName(unsigned int num)
   case encodingCoRRE:    return "CoRRE";
   case encodingHextile:  return "hextile";
   case encodingZRLE:     return "ZRLE";
+  case encodingTight:    return "Tight";
   default:               return "[unknown encoding]";
   }
 }

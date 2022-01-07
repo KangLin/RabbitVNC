@@ -26,7 +26,6 @@
 #ifndef __RFB_WIN32_DEVICE_FRAME_BUFFER_H__
 #define __RFB_WIN32_DEVICE_FRAME_BUFFER_H__
 
-#include <windows.h>
 #include <rfb_win32/DIBSectionBuffer.h>
 #include <rfb/Cursor.h>
 #include <rfb/Region.h>
@@ -71,15 +70,9 @@ namespace rfb {
       virtual void grabRect(const Rect &rect);
       virtual void grabRegion(const Region &region);
 
-      // - DIBSectionBuffer overrides
-      
-      virtual void setPF(const PixelFormat& pf);
-      virtual void setSize(int w, int h);
-      
       // - DeviceFrameBuffer specific methods
 
       void setCursor(HCURSOR c, VNCServer* server);
-      void updateColourMap();
 
       // Set whether grabRect should ignore errors or throw exceptions
       // Only set this if you are sure you'll capture the errors some other way!
@@ -93,8 +86,6 @@ namespace rfb {
       Point desktopToDevice(const Point p) const {return p.translate(deviceCoords.tl);}
 
       HDC device;
-      DIBSectionBuffer cursorBm;
-      Cursor cursor;
       Rect deviceCoords;
       bool ignoreGrabErrors;
     };

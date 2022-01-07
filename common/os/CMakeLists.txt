@@ -1,0 +1,28 @@
+
+set(RabbitVNC_SOURCES ${RabbitVNC_SOURCES}
+    ${CMAKE_CURRENT_SOURCE_DIR}/Mutex.cxx
+    ${CMAKE_CURRENT_SOURCE_DIR}/Thread.cxx
+    ${CMAKE_CURRENT_SOURCE_DIR}/w32tiger.cxx
+    ${CMAKE_CURRENT_SOURCE_DIR}/os.cxx
+    PARENT_SCOPE)
+
+set(OS_HEADS
+    ${CMAKE_CURRENT_SOURCE_DIR}/Mutex.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/Thread.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/w32tiger.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/os.h
+    )
+
+if(UNIX)
+    set(RabbitVNC_LIBS ${RabbitVNC_LIBS}
+        pthread
+        PARENT_SCOPE)
+endif()
+
+set(RabbitVNC_HEADS ${RabbitVNC_HEADS}
+    ${OS_HEADS}
+    PARENT_SCOPE)
+
+INSTALL(FILES ${OS_HEADS}
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME}/os
+    )

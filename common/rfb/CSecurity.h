@@ -42,11 +42,15 @@ namespace rfb {
   class CConnection;
   class CSecurity {
   public:
+    CSecurity(CConnection* cc_) : cc(cc_) {}
     virtual ~CSecurity() {}
-    virtual bool processMsg(CConnection* cc)=0;
-    virtual void destroy() { delete this; }
+    virtual bool processMsg() = 0;
     virtual int getType() const = 0;
     virtual const char* description() const = 0;
+    virtual bool isSecure() const { return false; }
+    
+  protected:
+    CConnection* cc;
   };
 }
 #endif

@@ -1,4 +1,5 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
+ * Copyright 2011-2019 Pierre Ossman for Cendio AB
  * 
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -52,6 +53,13 @@ namespace rfb {
       virtual const char* methodName() const = 0;
     };
 
+    class QueryConnectionHandler {
+    public:
+      virtual ~QueryConnectionHandler() {}
+      virtual void queryConnection(network::Socket* sock,
+                                   const char* userName) = 0;
+    };
+
     class SDisplay : public SDesktop,
       WMMonitor::Notifier,
       Clipboard::Notifier,
@@ -65,15 +73,18 @@ namespace rfb {
 
       virtual void start(VNCServer* vs);
       virtual void stop();
+      virtual void terminate();
+      virtual void queryConnection(network::Socket* sock,
+                                   const char* userName);
+      virtual void handleClipboardRequest();
+      virtual void handleClipboardAnnounce(bool available);
+      virtual void handleClipboardData(const char* data);
       virtual void pointerEvent(const Point& pos, int buttonmask);
-      virtual void keyEvent(rdr::U32 key, bool down);
-      virtual void clientCutText(const char* str, int len);
-      virtual void framebufferUpdateRequest();
-      virtual Point getFbSize();
+      virtual void keyEvent(rdr::U32 keysym, rdr::U32 keycode, bool down);
 
-      // -=- Clipboard
+      // -=- Clipboard events
       
-      virtual void notifyClipboardChanged(const char* text, int len);
+      virtual void notifyClipboardChanged(bool available);
 
       // -=- Display events
       
@@ -82,24 +93,27 @@ namespace rfb {
       // -=- EventHandler interface
 
       HANDLE getUpdateEvent() {return updateEvent;}
+      HANDLE getTerminateEvent() {return terminateEvent;}
       virtual void processEvent(HANDLE event);
 
       // -=- Notification of whether or not SDisplay is started
 
       void setStatusLocation(bool* status) {statusLocation = status;}
 
-      friend class SDisplayCore;
+      // -=- Set handler for incoming connections
+
+      void setQueryConnectionHandler(QueryConnectionHandler* qch) {
+        queryConnectionHandler = qch;
+      }
 
       static IntParameter updateMethod;
       static BoolParameter disableLocalInputs;
       static StringParameter disconnectAction;
       static BoolParameter removeWallpaper;
-      static BoolParameter removePattern;
       static BoolParameter disableEffects;
 
-      // -=- Use by VNC Config to determine whether hooks, driver, etc are available
+      // -=- Use by VNC Config to determine whether hooks are available
       static bool areHooksAvailable();
-      static bool isDriverAvailable();
 
 
     protected:
@@ -109,6 +123,7 @@ namespace rfb {
       void restartCore();
       void recreatePixelBuffer(bool force=false);
       bool flushChangeTracker();  // true if flushed, false if empty
+      bool checkLedState();
 
       VNCServer* server;
 
@@ -141,7 +156,6 @@ namespace rfb {
       // Desktop optimisation
       CleanDesktop* cleanDesktop;
       bool isWallpaperRemoved;
-      bool isPatternRemoved;
       bool areEffectsDisabled;
 
       // Cursor
@@ -152,9 +166,16 @@ namespace rfb {
 
       // -=- Event signalled to trigger an update to be flushed
       Handle updateEvent;
+      // -=- Event signalled to terminate the server
+      Handle terminateEvent;
 
       // -=- Where to write the active/inactive indicator to
       bool* statusLocation;
+
+      // -=- Whom to query incoming connections
+      QueryConnectionHandler* queryConnectionHandler;
+
+      unsigned ledState;
     };
 
   }

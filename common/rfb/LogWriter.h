@@ -25,12 +25,22 @@
 #include <rfb/Logger.h>
 #include <rfb/Configuration.h>
 
+#ifdef __GNUC__
+#  define __printf_attr(a, b) __attribute__((__format__ (__printf__, a, b)))
+#else
+#  define __printf_attr(a, b)
+#endif // __GNUC__
+
 // Each log writer instance has a unique textual name,
 // and is attached to a particular Log instance and
 // is assigned a particular log level.
 
 #define DEF_LOGFUNCTION(name, level) \
-  inline void name(const char* fmt, ...) { \
+  inline void v##name(const char* fmt, va_list ap) __printf_attr(2, 0) { \
+    if (m_log && (level <= m_level))        \
+      m_log->write(level, m_name, fmt, ap); \
+  } \
+  inline void name(const char* fmt, ...) __printf_attr(2, 3) { \
     if (m_log && (level <= m_level)) {     \
       va_list ap; va_start(ap, fmt);       \
       m_log->write(level, m_name, fmt, ap);\
@@ -51,8 +61,9 @@ namespace rfb {
 
     void setLog(Logger *logger);
     void setLevel(int level);
+    int getLevel(void) { return m_level; }
 
-    inline void write(int level, const char* format, ...) {
+    inline void write(int level, const char* format, ...) __printf_attr(3, 4) {
       if (m_log && (level <= m_level)) {
         va_list ap;
         va_start(ap, format);
@@ -61,10 +72,15 @@ namespace rfb {
       }
     }
 
-    DEF_LOGFUNCTION(error, 0)
-    DEF_LOGFUNCTION(status, 10)
-    DEF_LOGFUNCTION(info, 30)
-    DEF_LOGFUNCTION(debug, 100)
+    static const int LEVEL_ERROR  = 0;
+    static const int LEVEL_STATUS = 10;
+    static const int LEVEL_INFO   = 30;
+    static const int LEVEL_DEBUG  = 100;
+
+    DEF_LOGFUNCTION(error, LEVEL_ERROR)
+    DEF_LOGFUNCTION(status, LEVEL_STATUS)
+    DEF_LOGFUNCTION(info, LEVEL_INFO)
+    DEF_LOGFUNCTION(debug, LEVEL_DEBUG)
 
     // -=- DIAGNOSTIC & HELPER ROUTINES
 
@@ -89,15 +105,6 @@ namespace rfb {
   public:
     LogParameter();
     virtual bool setParam(const char* v);
-
-    // Call this to set a suitable default value.
-    // Can't use the normal default mechanism for
-    // this because there is no guarantee on C++
-    // constructor ordering - some LogWriters may
-    // not exist when LogParameter gets constructed.
-    // NB: The default value must exist for the
-    //     lifetime of the process!
-    void setDefault(const char* v);
   };
   extern LogParameter logParams;
 

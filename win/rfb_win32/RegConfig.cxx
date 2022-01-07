@@ -48,7 +48,7 @@ bool RegConfig::setKey(const HKEY rootkey, const TCHAR* keyname) {
     processEvent(event);
     return true;
   } catch (rdr::Exception& e) {
-    vlog.debug(e.str());
+    vlog.debug("%s", e.str());
     return false;
   }
 }
@@ -65,7 +65,7 @@ void RegConfig::loadRegistryConfig(RegKey& key) {
     }
   } catch (rdr::SystemException& e) {
     if (e.err != 6)
-      vlog.error(e.str());
+      vlog.error("%s", e.str());
   }
 }
 
@@ -85,30 +85,29 @@ void RegConfig::processEvent(HANDLE event_) {
 }
 
 
-RegConfigThread::RegConfigThread() : Thread("RegConfigThread"), config(&eventMgr) {
+RegConfigThread::RegConfigThread() : config(&eventMgr), thread_id(-1) {
 }
 
 RegConfigThread::~RegConfigThread() {
-  join();
+  PostThreadMessage(thread_id, WM_QUIT, 0, 0);
+  wait();
 }
 
 bool RegConfigThread::start(const HKEY rootKey, const TCHAR* keyname) {
   if (config.setKey(rootKey, keyname)) {
     Thread::start();
+    while (thread_id == (DWORD)-1)
+      Sleep(0);
     return true;
   }
   return false;
 }
 
-void RegConfigThread::run() {
+void RegConfigThread::worker() {
   DWORD result = 0;
   MSG msg;
+  thread_id = GetCurrentThreadId();
   while ((result = eventMgr.getMessage(&msg, 0, 0, 0)) > 0) {}
   if (result < 0)
     throw rdr::SystemException("RegConfigThread failed", GetLastError());
-}
-
-Thread* RegConfigThread::join() {
-  PostThreadMessage(getThreadId(), WM_QUIT, 0, 0);
-  return Thread::join();
 }

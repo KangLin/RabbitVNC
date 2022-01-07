@@ -1,4 +1,5 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
+ * Copyright 2014 Pierre Ossman for Cendio AB
  * 
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,106 +18,233 @@
  */
 #include <rdr/OutStream.h>
 #include <rfb/Exception.h>
-#include <rfb/ImageGetter.h>
 #include <rfb/encodings.h>
-#include <rfb/ConnParams.h>
-#include <rfb/SMsgWriter.h>
+#include <rfb/Palette.h>
+#include <rfb/SConnection.h>
 #include <rfb/ZRLEEncoder.h>
 #include <rfb/Configuration.h>
 
 using namespace rfb;
 
-rdr::MemOutStream* ZRLEEncoder::sharedMos = 0;
-int ZRLEEncoder::maxLen = 4097 * 1024; // enough for width 16384 32-bit pixels
-
 IntParameter zlibLevel("ZlibLevel","Zlib compression level",-1);
 
-#define EXTRA_ARGS ImageGetter* ig
-#define GET_IMAGE_INTO_BUF(r,buf) ig->getImage(buf, r);
-#define BPP 8
-#include <rfb/zrleEncode.h>
-#undef BPP
-#define BPP 16
-#include <rfb/zrleEncode.h>
-#undef BPP
-#define BPP 32
-#include <rfb/zrleEncode.h>
-#define CPIXEL 24A
-#include <rfb/zrleEncode.h>
-#undef CPIXEL
-#define CPIXEL 24B
-#include <rfb/zrleEncode.h>
-#undef CPIXEL
-#undef BPP
-
-Encoder* ZRLEEncoder::create(SMsgWriter* writer)
+ZRLEEncoder::ZRLEEncoder(SConnection* conn)
+  : Encoder(conn, encodingZRLE, EncoderPlain, 127),
+  zos(0,zlibLevel), mos(129*1024)
 {
-  return new ZRLEEncoder(writer);
-}
-
-ZRLEEncoder::ZRLEEncoder(SMsgWriter* writer_)
-  : writer(writer_), zos(0,0,zlibLevel)
-{
-  if (sharedMos)
-    mos = sharedMos;
-  else
-    mos = new rdr::MemOutStream(129*1024);
+  zos.setUnderlying(&mos);
 }
 
 ZRLEEncoder::~ZRLEEncoder()
 {
-  if (!sharedMos)
-    delete mos;
+  zos.setUnderlying(NULL);
 }
 
-bool ZRLEEncoder::writeRect(const Rect& r, ImageGetter* ig, Rect* actual)
+bool ZRLEEncoder::isSupported()
 {
-  rdr::U8* imageBuf = writer->getImageBuf(64 * 64 * 4 + 4);
-  mos->clear();
-  bool wroteAll = true;
-  *actual = r;
+  return conn->client.supportsEncoding(encodingZRLE);
+}
 
-  switch (writer->bpp()) {
-  case 8:
-    wroteAll = zrleEncode8(r, mos, &zos, imageBuf, maxLen, actual, ig);
-    break;
-  case 16:
-    wroteAll = zrleEncode16(r, mos, &zos, imageBuf, maxLen, actual, ig);
-    break;
-  case 32:
-    {
-      const PixelFormat& pf = writer->getConnParams()->pf();
+void ZRLEEncoder::writeRect(const PixelBuffer* pb, const Palette& palette)
+{
+  int x, y;
+  Rect tile;
 
-      bool fitsInLS3Bytes = ((pf.redMax   << pf.redShift)   < (1<<24) &&
-                             (pf.greenMax << pf.greenShift) < (1<<24) &&
-                             (pf.blueMax  << pf.blueShift)  < (1<<24));
+  rdr::OutStream* os;
 
-      bool fitsInMS3Bytes = (pf.redShift   > 7  &&
-                             pf.greenShift > 7  &&
-                             pf.blueShift  > 7);
+  // A bit of a special case
+  if (palette.size() == 1) {
+    Encoder::writeSolidRect(pb, palette);
+    return;
+  }
 
-      if ((fitsInLS3Bytes && !pf.bigEndian) ||
-          (fitsInMS3Bytes && pf.bigEndian))
-      {
-        wroteAll = zrleEncode24A(r, mos, &zos, imageBuf, maxLen, actual, ig);
-      }
-      else if ((fitsInLS3Bytes && pf.bigEndian) ||
-               (fitsInMS3Bytes && !pf.bigEndian))
-      {
-        wroteAll = zrleEncode24B(r, mos, &zos, imageBuf, maxLen, actual, ig);
-      }
+  for (y = 0;y < pb->height();y += 64) {
+    tile.tl.y = y;
+    tile.br.y = y + 64;
+    if (tile.br.y > pb->height())
+      tile.br.y = pb->height();
+
+    for (x = 0;x < pb->width();x += 64) {
+      tile.tl.x = x;
+      tile.br.x = x + 64;
+      if (tile.br.x > pb->width())
+        tile.br.x = pb->width();
+
+      if (palette.size() == 0)
+        writeRawTile(tile, pb, palette);
+      else if (palette.size() <= 16)
+        writePaletteTile(tile, pb, palette);
       else
-      {
-        wroteAll = zrleEncode32(r, mos, &zos, imageBuf, maxLen, actual, ig);
-      }
-      break;
+        writePaletteRLETile(tile, pb, palette);
     }
   }
 
-  writer->startRect(*actual, encodingZRLE);
-  rdr::OutStream* os = writer->getOutStream();
-  os->writeU32(mos->length());
-  os->writeBytes(mos->data(), mos->length());
-  writer->endRect();
-  return wroteAll;
+  zos.flush();
+
+  os = conn->getOutStream();
+
+  os->writeU32(mos.length());
+  os->writeBytes(mos.data(), mos.length());
+
+  mos.clear();
 }
+
+void ZRLEEncoder::writeSolidRect(int width, int height,
+                                 const PixelFormat& pf,
+                                 const rdr::U8* colour)
+{
+  int tiles;
+
+  rdr::OutStream* os;
+
+  tiles = ((width + 63)/64) * ((height + 63)/64);
+
+  while (tiles--) {
+    zos.writeU8(1);
+    writePixels(colour, pf, 1);
+  }
+
+  zos.flush();
+
+  os = conn->getOutStream();
+
+  os->writeU32(mos.length());
+  os->writeBytes(mos.data(), mos.length());
+
+  mos.clear();
+}
+
+void ZRLEEncoder::writePaletteTile(const Rect& tile, const PixelBuffer* pb,
+                                   const Palette& palette)
+{
+  const rdr::U8* buffer;
+  int stride;
+
+  buffer = pb->getBuffer(tile, &stride);
+
+  switch (pb->getPF().bpp) {
+  case 32:
+    writePaletteTile(tile.width(), tile.height(),
+                     (rdr::U32*)buffer, stride,
+                     pb->getPF(), palette);
+    break;
+  case 16:
+    writePaletteTile(tile.width(), tile.height(),
+                     (rdr::U16*)buffer, stride,
+                     pb->getPF(), palette);
+    break;
+  default:
+    writePaletteTile(tile.width(), tile.height(),
+                     (rdr::U8*)buffer, stride,
+                     pb->getPF(), palette);
+  }
+}
+
+void ZRLEEncoder::writePaletteRLETile(const Rect& tile, const PixelBuffer* pb,
+                                      const Palette& palette)
+{
+  const rdr::U8* buffer;
+  int stride;
+
+  buffer = pb->getBuffer(tile, &stride);
+
+  switch (pb->getPF().bpp) {
+  case 32:
+    writePaletteRLETile(tile.width(), tile.height(),
+                        (rdr::U32*)buffer, stride,
+                        pb->getPF(), palette);
+    break;
+  case 16:
+    writePaletteRLETile(tile.width(), tile.height(),
+                        (rdr::U16*)buffer, stride,
+                        pb->getPF(), palette);
+    break;
+  default:
+    writePaletteRLETile(tile.width(), tile.height(),
+                        (rdr::U8*)buffer, stride,
+                        pb->getPF(), palette);
+  }
+}
+
+void ZRLEEncoder::writeRawTile(const Rect& tile, const PixelBuffer* pb,
+                               const Palette& palette)
+{
+  const rdr::U8* buffer;
+  int stride;
+
+  int w, h, stride_bytes;
+
+  buffer = pb->getBuffer(tile, &stride);
+
+  zos.writeU8(0); // Empty palette (i.e. raw pixels)
+
+  w = tile.width();
+  h = tile.height();
+  stride_bytes = stride * pb->getPF().bpp/8;
+  while (h--) {
+    writePixels(buffer, pb->getPF(), w);
+    buffer += stride_bytes;
+  }
+}
+
+void ZRLEEncoder::writePalette(const PixelFormat& pf, const Palette& palette)
+{
+  rdr::U8 buffer[256*4];
+  int i;
+
+  if (pf.bpp == 32) {
+    rdr::U32* buf;
+    buf = (rdr::U32*)buffer;
+    for (i = 0;i < palette.size();i++)
+      *buf++ = palette.getColour(i);
+  } else if (pf.bpp == 16) {
+    rdr::U16* buf;
+    buf = (rdr::U16*)buffer;
+    for (i = 0;i < palette.size();i++)
+      *buf++ = palette.getColour(i);
+  } else {
+    rdr::U8* buf;
+    buf = (rdr::U8*)buffer;
+    for (i = 0;i < palette.size();i++)
+      *buf++ = palette.getColour(i);
+  }
+
+  writePixels(buffer, pf, palette.size());
+}
+
+void ZRLEEncoder::writePixels(const rdr::U8* buffer, const PixelFormat& pf,
+                              unsigned int count)
+{
+  Pixel maxPixel;
+  rdr::U8 pixBuf[4];
+
+  maxPixel = pf.pixelFromRGB((rdr::U16)-1, (rdr::U16)-1, (rdr::U16)-1);
+  pf.bufferFromPixel(pixBuf, maxPixel);
+
+  if ((pf.bpp != 32) || ((pixBuf[0] != 0) && (pixBuf[3] != 0))) {
+    zos.writeBytes(buffer, count * (pf.bpp/8));
+    return;
+  }
+
+  if (pixBuf[0] == 0)
+    buffer++;
+
+  while (count--) {
+    zos.writeBytes(buffer, 3);
+    buffer += 4;
+  }
+}
+
+//
+// Including BPP-dependent implementation of the encoder.
+//
+
+#define BPP 8
+#include <rfb/ZRLEEncoderBPP.cxx>
+#undef BPP
+#define BPP 16
+#include <rfb/ZRLEEncoderBPP.cxx>
+#undef BPP
+#define BPP 32
+#include <rfb/ZRLEEncoderBPP.cxx>
+#undef BPP

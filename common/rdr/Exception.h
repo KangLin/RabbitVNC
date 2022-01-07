@@ -1,4 +1,6 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
+ * Copyright (C) 2004 Red Hat Inc.
+ * Copyright (C) 2010 TigerVNC Team
  * 
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,40 +21,36 @@
 #ifndef __RDR_EXCEPTION_H__
 #define __RDR_EXCEPTION_H__
 
-#include <stdio.h>
-#include <string.h>
+#ifdef __GNUC__
+#  define __printf_attr(a, b) __attribute__((__format__ (__printf__, a, b)))
+#else
+#  define __printf_attr(a, b)
+#endif // __GNUC__
 
 namespace rdr {
 
   struct Exception {
     enum { len = 256 };
     char str_[len];
-    Exception(const char* s=0) {
-      str_[0] = 0;
-      if (s)
-        strncat(str_, s, len-1);
-      else
-        strcat(str_, "Exception");
-    }
+    Exception(const char *format = 0, ...) __printf_attr(2, 3);
+    virtual ~Exception() {}
     virtual const char* str() const { return str_; }
   };
 
   struct SystemException : public Exception {
     int err;
     SystemException(const char* s, int err_);
-  }; 
-
-  struct TimedOut : public Exception {
-    TimedOut(const char* s="Timed out") : Exception(s) {}
   };
- 
+
+  struct GAIException : public Exception {
+    int err;
+    GAIException(const char* s, int err_);
+  };
+
   struct EndOfStream : public Exception {
-    EndOfStream(const char* s="End of stream") : Exception(s) {}
+    EndOfStream() : Exception("End of stream") {}
   };
 
-  struct FrameException : public Exception {
-    FrameException(const char* s="Frame exception") : Exception(s) {}
-  };
 }
 
 #endif
