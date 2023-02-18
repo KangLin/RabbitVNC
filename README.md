@@ -9,7 +9,7 @@ machine.  VNC is platform-independent and supports a wide variety of operating
 systems and architectures as both servers and clients.
 
 RabbitVNC is a high-speed version of VNC based on the TigerVNC and X.org code
-bases. RabbitVCS is a cross-platform libraries and programme. The programme see
+bases. RabbitVNC is a cross-platform libraries and programme. The programme see
 https://github.com/KangLin/RabbitRemoteControl 
 
 + Main repository: https://github.com/KangLin/RabbitVNC
