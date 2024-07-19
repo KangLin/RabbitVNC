@@ -22,7 +22,11 @@
 #define __RFB_LOGGER_FILE_H__
 
 #include <time.h>
+#include <limits.h>
+
 #include <rfb/Logger.h>
+
+#include <os/os.h>
 
 namespace os { class Mutex; }
 
@@ -33,7 +37,7 @@ namespace rfb {
     Logger_File(const char* loggerName);
     ~Logger_File();
 
-    virtual void write(int level, const char *logname, const char *message);
+    void write(int level, const char *logname, const char *message) override;
     void setFilename(const char* filename);
     void setFile(FILE* file);
 
@@ -42,13 +46,13 @@ namespace rfb {
 
   protected:
     void closeFile();
-    char* m_filename;
+    char m_filename[PATH_MAX];
     FILE* m_file;
     time_t m_lastLogTime;
     os::Mutex* mutex;
   };
 
   bool initFileLogger(const char* filename);
-};
+}
 
 #endif

@@ -1,5 +1,5 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * Copyright 2014 Pierre Ossman for Cendio AB
+ * Copyright 2014-2022 Pierre Ossman for Cendio AB
  * 
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,11 +29,16 @@ namespace rfb {
   public:
     RREEncoder(SConnection* conn);
     virtual ~RREEncoder();
-    virtual bool isSupported();
-    virtual void writeRect(const PixelBuffer* pb, const Palette& palette);
-    virtual void writeSolidRect(int width, int height,
-                                const PixelFormat& pf,
-                                const rdr::U8* colour);
+    bool isSupported() override;
+    void writeRect(const PixelBuffer* pb,
+                   const Palette& palette) override;
+    void writeSolidRect(int width, int height, const PixelFormat& pf,
+                        const uint8_t* colour) override;
+  private:
+    template<class T>
+    inline void writePixel(rdr::OutStream* os, T pixel);
+    template<class T>
+    int rreEncode(T* data, int w, int h, rdr::OutStream* os, T bg);
   private:
     rdr::MemOutStream mos;
     ManagedPixelBuffer bufferCopy;

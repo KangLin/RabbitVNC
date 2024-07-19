@@ -35,17 +35,22 @@ namespace rdr {
   public:
     virtual ~BufferedInStream();
 
-    virtual size_t pos();
+    size_t pos() override;
+
+  protected:
+    size_t availSpace() { return start + bufSize - end; }
+
+    void ensureSpace(size_t needed);
 
   private:
-    virtual bool fillBuffer(size_t maxSize) = 0;
+    virtual bool fillBuffer() = 0;
 
-    virtual bool overrun(size_t needed);
+    bool overrun(size_t needed) override;
 
   private:
     size_t bufSize;
     size_t offset;
-    U8* start;
+    uint8_t* start;
 
     struct timeval lastSizeCheck;
     size_t peakUsage;

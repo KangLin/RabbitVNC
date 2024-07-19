@@ -16,6 +16,8 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
  * USA.
  */
+
+
 #include <stdio.h>
 #include <rfb/encodings.h>
 #include <rfb/Region.h>
@@ -26,10 +28,13 @@
 #include <rfb/HextileDecoder.h>
 #include <rfb/ZRLEDecoder.h>
 #include <rfb/TightDecoder.h>
+#ifdef HAVE_H264
+#include <rfb/H264Decoder.h>
+#endif
 
 using namespace rfb;
 
-Decoder::Decoder(enum DecoderFlags flags) : flags(flags)
+Decoder::Decoder(enum DecoderFlags flags_) : flags(flags_)
 {
 }
 
@@ -37,17 +42,22 @@ Decoder::~Decoder()
 {
 }
 
-void Decoder::getAffectedRegion(const Rect& rect, const void* buffer,
-                                size_t buflen, const ServerParams& server,
+void Decoder::getAffectedRegion(const Rect& rect,
+                                const uint8_t* /*buffer*/,
+                                size_t /*buflen*/,
+                                const ServerParams& /*server*/,
                                 Region* region)
 {
   region->reset(rect);
 }
 
-bool Decoder::doRectsConflict(const Rect& rectA, const void* bufferA,
-                              size_t buflenA, const Rect& rectB,
-                              const void* bufferB, size_t buflenB,
-                              const ServerParams& server)
+bool Decoder::doRectsConflict(const Rect& /*rectA*/,
+                              const uint8_t* /*bufferA*/,
+                              size_t /*buflenA*/,
+                              const Rect& /*rectB*/,
+                              const uint8_t* /*bufferB*/,
+                              size_t /*buflenB*/,
+                              const ServerParams& /*server*/)
 {
   return false;
 }
@@ -61,6 +71,9 @@ bool Decoder::supported(int encoding)
   case encodingHextile:
   case encodingZRLE:
   case encodingTight:
+#ifdef HAVE_H264
+  case encodingH264:
+#endif
     return true;
   default:
     return false;
@@ -82,7 +95,11 @@ Decoder* Decoder::createDecoder(int encoding)
     return new ZRLEDecoder();
   case encodingTight:
     return new TightDecoder();
+#ifdef HAVE_H264
+  case encodingH264:
+    return new H264Decoder();
+#endif
   default:
-    return NULL;
+    return nullptr;
   }
 }

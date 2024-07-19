@@ -31,7 +31,7 @@
 
 using namespace os;
 
-Thread::Thread() : running(false), threadId(NULL)
+Thread::Thread() : running(false), threadId(nullptr)
 {
   mutex = new Mutex;
 
@@ -60,8 +60,8 @@ void Thread::start()
   AutoMutex a(mutex);
 
 #ifdef WIN32
-  *(HANDLE*)threadId = CreateThread(NULL, 0, startRoutine, this, 0, NULL);
-  if (*(HANDLE*)threadId == NULL)
+  *(HANDLE*)threadId = CreateThread(nullptr, 0, startRoutine, this, 0, nullptr);
+  if (*(HANDLE*)threadId == nullptr)
     throw rdr::SystemException("Failed to create thread", GetLastError());
 #else
   int ret;
@@ -74,9 +74,9 @@ void Thread::start()
   if (ret != 0)
     throw rdr::SystemException("Failed to mask signals", ret);
 
-  ret = pthread_create((pthread_t*)threadId, NULL, startRoutine, this);
+  ret = pthread_create((pthread_t*)threadId, nullptr, startRoutine, this);
 
-  pthread_sigmask(SIG_SETMASK, &old, NULL);
+  pthread_sigmask(SIG_SETMASK, &old, nullptr);
 
   if (ret != 0)
     throw rdr::SystemException("Failed to create thread", ret);
@@ -99,7 +99,7 @@ void Thread::wait()
 #else
   int ret;
 
-  ret = pthread_join(*(pthread_t*)threadId, NULL);
+  ret = pthread_join(*(pthread_t*)threadId, nullptr);
   if (ret != 0)
     throw rdr::SystemException("Failed to join thread", ret);
 #endif
@@ -161,5 +161,9 @@ void* Thread::startRoutine(void* data)
   self->running = false;
   self->mutex->unlock();
 
+#ifdef WIN32
   return 0;
+#else
+  return nullptr;
+#endif
 }

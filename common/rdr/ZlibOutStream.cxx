@@ -17,6 +17,10 @@
  * USA.
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <stdio.h>
 
 #include <rdr/ZlibOutStream.h>
@@ -31,24 +35,19 @@ static rfb::LogWriter vlog("ZlibOutStream");
 
 using namespace rdr;
 
-enum { DEFAULT_BUF_SIZE = 16384 };
-
 ZlibOutStream::ZlibOutStream(OutStream* os, int compressLevel)
-  : underlying(os), compressionLevel(compressLevel), newLevel(compressLevel),
-    bufSize(DEFAULT_BUF_SIZE), offset(0)
+  : underlying(os), compressionLevel(compressLevel), newLevel(compressLevel)
 {
   zs = new z_stream;
-  zs->zalloc    = Z_NULL;
-  zs->zfree     = Z_NULL;
-  zs->opaque    = Z_NULL;
-  zs->next_in   = Z_NULL;
+  zs->zalloc    = nullptr;
+  zs->zfree     = nullptr;
+  zs->opaque    = nullptr;
+  zs->next_in   = nullptr;
   zs->avail_in  = 0;
   if (deflateInit(zs, compressLevel) != Z_OK) {
     delete zs;
     throw Exception("ZlibOutStream: deflateInit failed");
   }
-  ptr = start = new U8[bufSize];
-  end = start + bufSize;
 }
 
 ZlibOutStream::~ZlibOutStream()
@@ -57,7 +56,6 @@ ZlibOutStream::~ZlibOutStream()
     flush();
   } catch (Exception&) {
   }
-  delete [] start;
   deflateEnd(zs);
   delete zs;
 }
@@ -65,6 +63,8 @@ ZlibOutStream::~ZlibOutStream()
 void ZlibOutStream::setUnderlying(OutStream* os)
 {
   underlying = os;
+  if (underlying)
+    underlying->cork(corked);
 }
 
 void ZlibOutStream::setCompressionLevel(int level)
@@ -75,17 +75,26 @@ void ZlibOutStream::setCompressionLevel(int level)
   newLevel = level;
 }
 
-size_t ZlibOutStream::length()
+void ZlibOutStream::flush()
 {
-  return offset + ptr - start;
+  BufferedOutStream::flush();
+  if (underlying != nullptr)
+    underlying->flush();
 }
 
-void ZlibOutStream::flush()
+void ZlibOutStream::cork(bool enable)
+{
+  BufferedOutStream::cork(enable);
+  if (underlying != nullptr)
+    underlying->cork(enable);
+}
+
+bool ZlibOutStream::flushBuffer()
 {
   checkCompressionLevel();
 
-  zs->next_in = start;
-  zs->avail_in = ptr - start;
+  zs->next_in = sentUpTo;
+  zs->avail_in = ptr - sentUpTo;
 
 #ifdef ZLIBOUT_DEBUG
   vlog.debug("flush: avail_in %d",zs->avail_in);
@@ -94,43 +103,9 @@ void ZlibOutStream::flush()
   // Force out everything from the zlib encoder
   deflate(corked ? Z_NO_FLUSH : Z_SYNC_FLUSH);
 
-  if (zs->avail_in == 0) {
-    offset += ptr - start;
-    ptr = start;
-  } else {
-    // didn't consume all the data?  try shifting what's left to the
-    // start of the buffer.
-    memmove(start, zs->next_in, ptr - zs->next_in);
-    offset += zs->next_in - start;
-    ptr -= zs->next_in - start;
-  }
-}
+  sentUpTo = zs->next_in;
 
-void ZlibOutStream::cork(bool enable)
-{
-  OutStream::cork(enable);
-
-  underlying->cork(enable);
-}
-
-void ZlibOutStream::overrun(size_t needed)
-{
-#ifdef ZLIBOUT_DEBUG
-  vlog.debug("overrun");
-#endif
-
-  if (needed > bufSize)
-    throw Exception("ZlibOutStream overrun: buffer size exceeded");
-
-  checkCompressionLevel();
-
-  while (avail() < needed) {
-    // use corked to make zlib a bit more efficient since we're not trying
-    // to end the stream here, just make some room
-    corked = true;
-    flush();
-    corked = false;
-  }
+  return true;
 }
 
 void ZlibOutStream::deflate(int flush)

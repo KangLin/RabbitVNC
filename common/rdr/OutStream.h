@@ -24,10 +24,11 @@
 #ifndef __RDR_OUTSTREAM_H__
 #define __RDR_OUTSTREAM_H__
 
-#include <rdr/types.h>
+#include <stdint.h>
+#include <string.h> // for memcpy
+
 #include <rdr/Exception.h>
 #include <rdr/InStream.h>
-#include <string.h> // for memcpy
 
 namespace rdr {
 
@@ -35,7 +36,7 @@ namespace rdr {
 
   protected:
 
-    OutStream() : ptr(NULL), end(NULL), corked(false) {}
+    OutStream() : ptr(nullptr), end(nullptr), corked(false) {}
 
   public:
 
@@ -51,14 +52,17 @@ namespace rdr {
 
     // writeU/SN() methods write unsigned and signed N-bit integers.
 
-    inline void writeU8( U8  u) { check(1); *ptr++ = u; }
-    inline void writeU16(U16 u) { check(2); *ptr++ = u >> 8; *ptr++ = (U8)u; }
-    inline void writeU32(U32 u) { check(4); *ptr++ = u >> 24; *ptr++ = u >> 16;
-                                            *ptr++ = u >> 8; *ptr++ = u; }
+    inline void writeU8( uint8_t  u) { check(1); *ptr++ = u; }
+    inline void writeU16(uint16_t u) { check(2); *ptr++ = u >> 8;
+                                       *ptr++ = (uint8_t)u; }
+    inline void writeU32(uint32_t u) { check(4); *ptr++ = u >> 24;
+                                       *ptr++ = u >> 16;
+                                       *ptr++ = u >> 8;
+                                       *ptr++ = u; }
 
-    inline void writeS8( S8  s) { writeU8((U8)s); }
-    inline void writeS16(S16 s) { writeU16((U16)s); }
-    inline void writeS32(S32 s) { writeU32((U32)s); }
+    inline void writeS8( int8_t  s) { writeU8((uint8_t)s); }
+    inline void writeS16(int16_t s) { writeU16((uint16_t)s); }
+    inline void writeS32(int32_t s) { writeU32((uint32_t)s); }
 
     inline void pad(size_t bytes) {
       while (bytes-- > 0) writeU8(0);
@@ -66,7 +70,7 @@ namespace rdr {
 
     // writeBytes() writes an exact number of bytes.
 
-    void writeBytes(const void* data, size_t length) {
+    void writeBytes(const uint8_t* data, size_t length) {
       while (length > 0) {
         check(1);
         size_t n = length;
@@ -74,7 +78,7 @@ namespace rdr {
           n = avail();
         memcpy(ptr, data, n);
         ptr += n;
-        data = (U8*)data + n;
+        data = (uint8_t*)data + n;
         length -= n;
       }
     }
@@ -95,13 +99,15 @@ namespace rdr {
 
     // writeOpaqueN() writes a quantity without byte-swapping.
 
-    inline void writeOpaque8( U8  u) { writeU8(u); }
-    inline void writeOpaque16(U16 u) { check(2); *ptr++ = ((U8*)&u)[0];
-                                       *ptr++ = ((U8*)&u)[1]; }
-    inline void writeOpaque32(U32 u) { check(4); *ptr++ = ((U8*)&u)[0];
-                                       *ptr++ = ((U8*)&u)[1];
-                                       *ptr++ = ((U8*)&u)[2];
-                                       *ptr++ = ((U8*)&u)[3]; }
+    inline void writeOpaque8( uint8_t  u) { writeU8(u); }
+    inline void writeOpaque16(uint16_t u) { check(2);
+                                            *ptr++ = ((uint8_t*)&u)[0];
+                                            *ptr++ = ((uint8_t*)&u)[1]; }
+    inline void writeOpaque32(uint32_t u) { check(4);
+                                            *ptr++ = ((uint8_t*)&u)[0];
+                                            *ptr++ = ((uint8_t*)&u)[1];
+                                            *ptr++ = ((uint8_t*)&u)[2];
+                                            *ptr++ = ((uint8_t*)&u)[3]; }
 
     // length() returns the length of the stream.
 
@@ -113,7 +119,7 @@ namespace rdr {
 
     // cork() requests that the stream coalesces flushes in an efficient way
 
-    virtual void cork(bool enable) { corked = enable; flush(); }
+    virtual void cork(bool enable) { corked = enable; if (!enable) flush(); }
 
     // getptr() and setptr() are "dirty" methods which allow you direct access
     // to the buffer. This is useful for a stream which is a wrapper around an
@@ -121,7 +127,7 @@ namespace rdr {
     // larger than the bytes actually written as doing so can result in
     // security issues. Use pad() in such cases instead.
 
-    inline U8* getptr(size_t length) { check(length); return ptr; }
+    inline uint8_t* getptr(size_t length) { check(length); return ptr; }
     inline void setptr(size_t length) { if (length > avail())
                                           throw Exception("Output stream overflow");
                                         ptr += length; }
@@ -141,8 +147,8 @@ namespace rdr {
 
   protected:
 
-    U8* ptr;
-    U8* end;
+    uint8_t* ptr;
+    uint8_t* end;
 
     bool corked;
   };

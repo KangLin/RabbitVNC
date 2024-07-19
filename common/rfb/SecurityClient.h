@@ -26,6 +26,7 @@
 #include <rfb/Security.h>
 #include <rfb/CSecurity.h>
 #include <rfb/UserPasswdGetter.h>
+#include <rfb/UserMsgBox.h>
 
 namespace rfb {
 
@@ -34,14 +35,16 @@ namespace rfb {
     SecurityClient(void) : Security(secTypes) {}
     
     void setUserPasswdGetter(UserPasswdGetter* upg) {this->upg = upg;}
-    
+    void setUseMsgBox(UserMsgBox *msg) {this->msg = msg;}
     /* Create client side CSecurity class instance */
-    CSecurity* GetCSecurity(CConnection* cc, rdr::U32 secType);
+    CSecurity* GetCSecurity(CConnection* cc, uint32_t secType);
 
     static StringParameter secTypes;
         
   private:
     UserPasswdGetter* upg;
+    UserMsgBox *msg;
+      
   };
 
 }

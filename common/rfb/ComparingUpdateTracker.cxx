@@ -18,9 +18,11 @@
 #include <stdio.h>
 #include <string.h>
 #include <vector>
-#include <rdr/types.h>
+
 #include <rfb/Exception.h>
 #include <rfb/LogWriter.h>
+#include <rfb/util.h>
+
 #include <rfb/ComparingUpdateTracker.h>
 
 using namespace rfb;
@@ -57,7 +59,7 @@ bool ComparingUpdateTracker::compare()
     for (int y=0; y<fb->height(); y+=BLOCK_SIZE) {
       Rect pos(0, y, fb->width(), __rfbmin(fb->height(), y+BLOCK_SIZE));
       int srcStride;
-      const rdr::U8* srcData = fb->getBuffer(pos, &srcStride);
+      const uint8_t* srcData = fb->getBuffer(pos, &srcStride);
       oldFb.imageRect(pos, srcData, srcStride);
     }
 
@@ -83,7 +85,7 @@ bool ComparingUpdateTracker::compare()
   for (i = rects.begin(); i != rects.end(); i++)
     missedPixels += i->area();
 
-  if (changed.equals(newChanged))
+  if (changed == newChanged)
     return false;
 
   changed = newChanged;
@@ -117,7 +119,7 @@ void ComparingUpdateTracker::compareRect(const Rect& r, Region* newChanged)
 
   int bytesPerPixel = fb->getPF().bpp/8;
   int oldStride;
-  rdr::U8* oldData = oldFb.getBufferRW(r, &oldStride);
+  uint8_t* oldData = oldFb.getBufferRW(r, &oldStride);
   int oldStrideBytes = oldStride * bytesPerPixel;
 
   // Used to efficiently crop the left and right of the change rectangle
@@ -129,16 +131,16 @@ void ComparingUpdateTracker::compareRect(const Rect& r, Region* newChanged)
     // Get a strip of the source buffer
     Rect pos(r.tl.x, blockTop, r.br.x, __rfbmin(r.br.y, blockTop+BLOCK_SIZE));
     int fbStride;
-    const rdr::U8* newBlockPtr = fb->getBuffer(pos, &fbStride);
+    const uint8_t* newBlockPtr = fb->getBuffer(pos, &fbStride);
     int newStrideBytes = fbStride * bytesPerPixel;
 
-    rdr::U8* oldBlockPtr = oldData;
+    uint8_t* oldBlockPtr = oldData;
     int blockBottom = __rfbmin(blockTop+BLOCK_SIZE, r.br.y);
 
     for (int blockLeft = r.tl.x; blockLeft < r.br.x; blockLeft += BLOCK_SIZE)
     {
-      const rdr::U8* newPtr = newBlockPtr;
-      rdr::U8* oldPtr = oldBlockPtr;
+      const uint8_t* newPtr = newBlockPtr;
+      uint8_t* oldPtr = oldBlockPtr;
 
       int blockRight = __rfbmin(blockLeft+BLOCK_SIZE, r.br.x);
       int blockWidthInBytes = (blockRight-blockLeft) * bytesPerPixel;
@@ -155,8 +157,8 @@ void ComparingUpdateTracker::compareRect(const Rect& r, Region* newChanged)
 
           // For every unchanged row at the bottom of the block, decrement change height
           {
-            const rdr::U8* newRowPtr = newPtr + ((changeHeight - 1) * newStrideBytes);
-            const rdr::U8* oldRowPtr = oldPtr + ((changeHeight - 1) * oldStrideBytes);
+            const uint8_t* newRowPtr = newPtr + ((changeHeight - 1) * newStrideBytes);
+            const uint8_t* oldRowPtr = oldPtr + ((changeHeight - 1) * oldStrideBytes);
             while (changeHeight > 1 && memcmp(oldRowPtr, newRowPtr, blockWidthInBytes) == 0)
             {
               newRowPtr -= newStrideBytes;
@@ -168,12 +170,12 @@ void ComparingUpdateTracker::compareRect(const Rect& r, Region* newChanged)
 
           // For every unchanged column at the left of the block, increment change left
           {
-            const rdr::U8* newColumnPtr = newPtr;
-            const rdr::U8* oldColumnPtr = oldPtr;
+            const uint8_t* newColumnPtr = newPtr;
+            const uint8_t* oldColumnPtr = oldPtr;
             while (changeLeft + minCompareWidthInPixels < changeRight)
             {
-              const rdr::U8* newRowPtr = newColumnPtr;
-              const rdr::U8* oldRowPtr = oldColumnPtr;
+              const uint8_t* newRowPtr = newColumnPtr;
+              const uint8_t* oldRowPtr = oldColumnPtr;
               for (int row = 0; row < changeHeight; row++)
               {
                 if (memcmp(oldRowPtr, newRowPtr, minCompareWidthInBytes) != 0)
@@ -193,15 +195,15 @@ void ComparingUpdateTracker::compareRect(const Rect& r, Region* newChanged)
 
           // For every unchanged column at the right of the block, decrement change right
           {
-            const rdr::U8* newColumnPtr = newPtr + blockWidthInBytes;
-            const rdr::U8* oldColumnPtr = oldPtr + blockWidthInBytes;
+            const uint8_t* newColumnPtr = newPtr + blockWidthInBytes;
+            const uint8_t* oldColumnPtr = oldPtr + blockWidthInBytes;
             while (changeLeft + minCompareWidthInPixels < changeRight)
             {
               newColumnPtr -= minCompareWidthInBytes;
               oldColumnPtr -= minCompareWidthInBytes;
 
-              const rdr::U8* newRowPtr = newColumnPtr;
-              const rdr::U8* oldRowPtr = oldColumnPtr;
+              const uint8_t* newRowPtr = newColumnPtr;
+              const uint8_t* oldRowPtr = oldColumnPtr;
               for (int row = 0; row < changeHeight; row++)
               {
                 if (memcmp(oldRowPtr, newRowPtr, minCompareWidthInBytes) != 0)
@@ -248,14 +250,12 @@ void ComparingUpdateTracker::compareRect(const Rect& r, Region* newChanged)
 void ComparingUpdateTracker::logStats()
 {
   double ratio;
-  char a[1024], b[1024];
-
-  siPrefix(totalPixels, "pixels", a, sizeof(a));
-  siPrefix(missedPixels, "pixels", b, sizeof(b));
 
   ratio = (double)totalPixels / missedPixels;
 
-  vlog.info("%s in / %s out", a, b);
+  vlog.info("%s in / %s out",
+            siPrefix(totalPixels, "pixels").c_str(),
+            siPrefix(missedPixels, "pixels").c_str());
   vlog.info("(1:%g ratio)", ratio);
 
   totalPixels = missedPixels = 0;

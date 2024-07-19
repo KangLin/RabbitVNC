@@ -25,38 +25,33 @@
 #ifndef __RDR_ZLIBOUTSTREAM_H__
 #define __RDR_ZLIBOUTSTREAM_H__
 
-#include <rdr/OutStream.h>
+#include <rdr/BufferedOutStream.h>
 
 struct z_stream_s;
 
 namespace rdr {
 
-  class ZlibOutStream : public OutStream {
+  class ZlibOutStream : public BufferedOutStream {
 
   public:
 
-    ZlibOutStream(OutStream* os=0, int compressionLevel=-1);
+    ZlibOutStream(OutStream* os=nullptr, int compressionLevel=-1);
     virtual ~ZlibOutStream();
 
     void setUnderlying(OutStream* os);
     void setCompressionLevel(int level=-1);
-    void flush();
-    size_t length();
-    virtual void cork(bool enable);
+    void flush() override;
+    void cork(bool enable) override;
 
   private:
-
-    virtual void overrun(size_t needed);
+    bool flushBuffer() override;
     void deflate(int flush);
     void checkCompressionLevel();
 
     OutStream* underlying;
     int compressionLevel;
     int newLevel;
-    size_t bufSize;
-    size_t offset;
     z_stream_s* zs;
-    U8* start;
   };
 
 } // end of namespace rdr

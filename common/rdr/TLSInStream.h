@@ -20,10 +20,6 @@
 #ifndef __RDR_TLSINSTREAM_H__
 #define __RDR_TLSINSTREAM_H__
 
-#ifdef HAVE_CONFIG_H
-#include <config.h>
-#endif
-
 #ifdef HAVE_GNUTLS
 
 #include <gnutls/gnutls.h>
@@ -37,13 +33,14 @@ namespace rdr {
     virtual ~TLSInStream();
 
   private:
-    virtual bool fillBuffer(size_t maxSize);
-    size_t readTLS(U8* buf, size_t len);
+    bool fillBuffer() override;
+    size_t readTLS(uint8_t* buf, size_t len);
     static ssize_t pull(gnutls_transport_ptr_t str, void* data, size_t size);
 
     gnutls_session_t session;
     InStream* in;
 
+    bool streamEmpty;
     Exception* saved_exception;
   };
 };

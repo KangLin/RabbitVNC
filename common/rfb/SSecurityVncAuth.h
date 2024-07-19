@@ -24,11 +24,11 @@
 #ifndef __RFB_SSECURITYVNCAUTH_H__
 #define __RFB_SSECURITYVNCAUTH_H__
 
+#include <stdint.h>
+
 #include <rfb/Configuration.h>
-#include <rfb/Password.h>
 #include <rfb/SSecurity.h>
 #include <rfb/Security.h>
-#include <rdr/types.h>
 
 namespace rfb {
 
@@ -36,15 +36,15 @@ namespace rfb {
   public:
     // getVncAuthPasswd() fills buffer of given password and readOnlyPassword.
     // If there was no read only password in the file, readOnlyPassword buffer is null.
-    virtual void getVncAuthPasswd(PlainPasswd *password, PlainPasswd *readOnlyPassword)=0;
+    virtual void getVncAuthPasswd(std::string *password, std::string *readOnlyPassword)=0;
 
     virtual ~VncAuthPasswdGetter() { }
   };
 
-  class VncAuthPasswdParameter : public VncAuthPasswdGetter, public BinaryParameter {
+  class VncAuthPasswdParameter : public VncAuthPasswdGetter, BinaryParameter {
   public:
     VncAuthPasswdParameter(const char* name, const char* desc, StringParameter* passwdFile_);
-    virtual void getVncAuthPasswd(PlainPasswd *password, PlainPasswd *readOnlyPassword);
+    void getVncAuthPasswd(std::string *password, std::string *readOnlyPassword) override;
   protected:
     StringParameter* passwdFile;
   };
@@ -52,20 +52,20 @@ namespace rfb {
   class SSecurityVncAuth : public SSecurity {
   public:
     SSecurityVncAuth(SConnection* sc);
-    virtual bool processMsg();
-    virtual int getType() const {return secTypeVncAuth;}
-    virtual const char* getUserName() const {return 0;}
-    virtual SConnection::AccessRights getAccessRights() const { return accessRights; }
+    bool processMsg() override;
+    int getType() const override {return secTypeVncAuth;}
+    const char* getUserName() const override {return nullptr;}
+    AccessRights getAccessRights() const override { return accessRights; }
     static StringParameter vncAuthPasswdFile;
     static VncAuthPasswdParameter vncAuthPasswd;
   private:
-    bool verifyResponse(const PlainPasswd &password);
+    bool verifyResponse(const char* password);
     enum {vncAuthChallengeSize = 16};
-    rdr::U8 challenge[vncAuthChallengeSize];
-    rdr::U8 response[vncAuthChallengeSize];
+    uint8_t challenge[vncAuthChallengeSize];
+    uint8_t response[vncAuthChallengeSize];
     bool sentChallenge;
     VncAuthPasswdGetter* pg;
-    SConnection::AccessRights accessRights;
+    AccessRights accessRights;
   };
 }
 #endif

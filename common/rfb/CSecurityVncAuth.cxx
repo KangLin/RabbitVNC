@@ -26,7 +26,6 @@
 #include <assert.h>
 
 #include <rfb/CConnection.h>
-#include <rfb/Password.h>
 #include <rfb/CSecurityVncAuth.h>
 #include <rfb/util.h>
 #include <rfb/Security.h>
@@ -54,18 +53,17 @@ bool CSecurityVncAuth::processMsg()
     return false;
 
   // Read the challenge & obtain the user's password
-  rdr::U8 challenge[vncAuthChallengeSize];
+  uint8_t challenge[vncAuthChallengeSize];
   is->readBytes(challenge, vncAuthChallengeSize);
-  PlainPasswd passwd;
+  std::string passwd;
   
   assert(upg != NULL); /* (upg == NULL) means bug in the viewer, please call SecurityClient::setUserPasswdGetter */
-  upg->getUserPasswd(cc->isSecure(), 0, &passwd.buf);
+  upg->getUserPasswd(cc->isSecure(), nullptr, &passwd);
 
   // Calculate the correct response
-  rdr::U8 key[8];
-  int pwdLen = strlen(passwd.buf);
-  for (int i=0; i<8; i++)
-    key[i] = i<pwdLen ? passwd.buf[i] : 0;
+  uint8_t key[8];
+  for (size_t i=0; i<8; i++)
+    key[i] = i<passwd.size() ? passwd[i] : 0;
   deskey(key, EN0);
   for (int j = 0; j < vncAuthChallengeSize; j += 8)
     des(challenge+j, challenge+j);

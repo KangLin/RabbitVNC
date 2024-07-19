@@ -35,6 +35,7 @@
 
 #include <assert.h>
 #include <os/os.h>
+#include <string.h>
 
 #ifdef __linux__
 #include <sys/ioctl.h>
@@ -80,11 +81,11 @@ Congestion::Congestion() :
     baseRTT(-1), congWindow(INITIAL_WINDOW), inSlowStart(true),
     safeBaseRTT(-1), measurements(0), minRTT(-1), minCongestedRTT(-1)
 {
-  gettimeofday(&lastUpdate, NULL);
-  gettimeofday(&lastSent, NULL);
+  gettimeofday(&lastUpdate, nullptr);
+  gettimeofday(&lastSent, nullptr);
   memset(&lastPong, 0, sizeof(lastPong));
-  gettimeofday(&lastPongArrival, NULL);
-  gettimeofday(&lastAdjustment, NULL);
+  gettimeofday(&lastPongArrival, nullptr);
+  gettimeofday(&lastAdjustment, nullptr);
 }
 
 Congestion::~Congestion()
@@ -96,7 +97,7 @@ void Congestion::updatePosition(unsigned pos)
   struct timeval now;
   unsigned delta, consumed;
 
-  gettimeofday(&now, NULL);
+  gettimeofday(&now, nullptr);
 
   delta = pos - lastPosition;
   if ((delta > 0) || (extraBuffer > 0))
@@ -116,7 +117,7 @@ void Congestion::updatePosition(unsigned pos)
     congWindow = __rfbmin(INITIAL_WINDOW, congWindow);
     baseRTT = -1;
     measurements = 0;
-    gettimeofday(&lastAdjustment, NULL);
+    gettimeofday(&lastAdjustment, nullptr);
     minRTT = minCongestedRTT = -1;
     inSlowStart = true;
   }
@@ -144,7 +145,7 @@ void Congestion::sentPing()
 
   memset(&rttInfo, 0, sizeof(struct RTTInfo));
 
-  gettimeofday(&rttInfo.tv, NULL);
+  gettimeofday(&rttInfo.tv, nullptr);
   rttInfo.pos = lastPosition;
   rttInfo.extra = getExtraBuffer();
   rttInfo.congested = isCongested();
@@ -161,7 +162,7 @@ void Congestion::gotPong()
   if (pings.empty())
     return;
 
-  gettimeofday(&now, NULL);
+  gettimeofday(&now, nullptr);
 
   rttInfo = pings.front();
   pings.pop_front();
@@ -309,11 +310,13 @@ size_t Congestion::getBandwidth()
 
 void Congestion::debugTrace(const char* filename, int fd)
 {
+  (void)filename;
+  (void)fd;
 #ifdef CONGESTION_TRACE
 #ifdef __linux__
   FILE *f;
   f = fopen(filename, "ab");
-  if (f != NULL) {
+  if (f != nullptr) {
     struct tcp_info info;
     int buffered;
     socklen_t len;
@@ -322,7 +325,7 @@ void Congestion::debugTrace(const char* filename, int fd)
                     TCP_INFO, &info, &len) == 0) &&
         (ioctl(fd, SIOCOUTQ, &buffered) == 0)) {
       struct timeval now;
-      gettimeofday(&now, NULL);
+      gettimeofday(&now, nullptr);
       fprintf(f, "%u.%06u,%u,%u,%u,%u\n",
               (unsigned)now.tv_sec, (unsigned)now.tv_usec,
               congWindow, info.tcpi_snd_cwnd * info.tcpi_snd_mss,

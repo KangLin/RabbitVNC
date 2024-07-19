@@ -17,6 +17,7 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
  * USA.
  */
+
 #include <rdr/OutStream.h>
 #include <rfb/encodings.h>
 #include <rfb/SConnection.h>
@@ -63,8 +64,8 @@ static const struct TightJPEGConfiguration conf[10] = {
 };
 
 
-TightJPEGEncoder::TightJPEGEncoder(SConnection* conn) :
-  Encoder(conn, encodingTight,
+TightJPEGEncoder::TightJPEGEncoder(SConnection* conn_) :
+  Encoder(conn_, encodingTight,
           (EncoderFlags)(EncoderUseNativePF | EncoderLossy), -1, 9),
   qualityLevel(-1), fineQuality(-1), fineSubsampling(subsampleUndefined)
 {
@@ -107,9 +108,10 @@ int TightJPEGEncoder::getQualityLevel()
   return qualityLevel;
 }
 
-void TightJPEGEncoder::writeRect(const PixelBuffer* pb, const Palette& palette)
+void TightJPEGEncoder::writeRect(const PixelBuffer* pb,
+                                 const Palette& /*palette*/)
 {
-  const rdr::U8* buffer;
+  const uint8_t* buffer;
   int stride;
 
   int quality, subsampling;
@@ -146,17 +148,17 @@ void TightJPEGEncoder::writeRect(const PixelBuffer* pb, const Palette& palette)
 
 void TightJPEGEncoder::writeSolidRect(int width, int height,
                                       const PixelFormat& pf,
-                                      const rdr::U8* colour)
+                                      const uint8_t* colour)
 {
   // FIXME: Add a shortcut in the JPEG compressor to handle this case
   //        without having to use the default fallback which is very slow.
   Encoder::writeSolidRect(width, height, pf, colour);
 }
 
-void TightJPEGEncoder::writeCompact(rdr::U32 value, rdr::OutStream* os)
+void TightJPEGEncoder::writeCompact(uint32_t value, rdr::OutStream* os)
 {
   // Copied from TightEncoder as it's overkill to inherit just for this
-  rdr::U8 b;
+  uint8_t b;
 
   b = value & 0x7F;
   if (value <= 0x7F) {

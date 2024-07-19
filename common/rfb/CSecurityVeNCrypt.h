@@ -25,9 +25,10 @@
 #ifndef __CSECURITYVENCRYPT_H__
 #define __CSECURITYVENCRYPT_H__
 
+#include <stdint.h>
+
 #include <rfb/CSecurity.h>
 #include <rfb/SecurityClient.h>
-#include <rdr/types.h>
 
 namespace rfb {
 
@@ -36,10 +37,9 @@ namespace rfb {
 
     CSecurityVeNCrypt(CConnection* cc, SecurityClient* sec);
     ~CSecurityVeNCrypt();
-    virtual bool processMsg();
-    int getType() const {return chosenType;}
-    virtual const char* description() const;
-    virtual bool isSecure() const;
+    bool processMsg() override;
+    int getType() const override {return chosenType;}
+    bool isSecure() const override;
 
   protected:
     CSecurity *csecurity;
@@ -51,10 +51,10 @@ namespace rfb {
     bool haveListOfTypes;
     bool haveNumberOfTypes;
     bool haveChosenType;
-    rdr::U8 majorVersion, minorVersion;
-    rdr::U32 chosenType;
-    rdr::U8 nAvailableTypes;
-    rdr::U32 *availableTypes;
+    uint8_t majorVersion, minorVersion;
+    uint32_t chosenType;
+    uint8_t nAvailableTypes;
+    uint32_t *availableTypes;
   };
 }
 #endif

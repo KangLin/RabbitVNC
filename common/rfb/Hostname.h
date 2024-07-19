@@ -20,19 +20,38 @@
 #define __RFB_HOSTNAME_H__
 
 #include <assert.h>
+#include <ctype.h>
 #include <stdlib.h>
+#include <string.h>
 #include <rdr/Exception.h>
 #include <rfb/util.h>
 
 namespace rfb {
 
-  static void getHostAndPort(const char* hi, char** host, int* port, int basePort=5900) {
+  static bool isAllSpace(const char *string) {
+    if (string == nullptr)
+      return false;
+    while(*string != '\0') {
+      if (! isspace(*string))
+        return false;
+      string++;
+    }
+    return true;
+  }
+
+  static void getHostAndPort(const char* hi, std::string* host,
+                             int* port, int basePort=5900)
+  {
     const char* hostStart;
     const char* hostEnd;
     const char* portStart;
 
-    if (hi == NULL)
+    if (hi == nullptr)
       throw rdr::Exception("NULL host specified");
+
+    // Trim leading whitespace
+    while(isspace(*hi))
+      hi++;
 
     assert(host);
     assert(port);
@@ -40,19 +59,19 @@ namespace rfb {
     if (hi[0] == '[') {
       hostStart = &hi[1];
       hostEnd = strchr(hostStart, ']');
-      if (hostEnd == NULL)
+      if (hostEnd == nullptr)
         throw rdr::Exception("unmatched [ in host");
 
       portStart = hostEnd + 1;
-      if (*portStart == '\0')
-        portStart = NULL;
+      if (isAllSpace(portStart))
+        portStart = nullptr;
     } else {
       hostStart = &hi[0];
       hostEnd = strrchr(hostStart, ':');
 
-      if (hostEnd == NULL) {
+      if (hostEnd == nullptr) {
         hostEnd = hostStart + strlen(hostStart);
-        portStart = NULL;
+        portStart = nullptr;
       } else {
         if ((hostEnd > hostStart) && (hostEnd[-1] == ':'))
           hostEnd--;
@@ -60,22 +79,21 @@ namespace rfb {
         if (portStart != hostEnd) {
           // We found more : in the host. This is probably an IPv6 address
           hostEnd = hostStart + strlen(hostStart);
-          portStart = NULL;
+          portStart = nullptr;
         }
       }
     }
 
-    if (hostStart == hostEnd)
-      *host = strDup("localhost");
-    else {
-      size_t len;
-      len = hostEnd - hostStart + 1;
-      *host = new char[len];
-      strncpy(*host, hostStart, len-1);
-      (*host)[len-1] = '\0';
-    }
+    // Back up past trailing space
+    while(isspace(*(hostEnd - 1)) && hostEnd > hostStart)
+      hostEnd--;
 
-    if (portStart == NULL)
+    if (hostStart == hostEnd)
+      *host = "localhost";
+    else
+      *host = std::string(hostStart, hostEnd - hostStart);
+
+    if (portStart == nullptr)
       *port = basePort;
     else {
       char* end;
@@ -87,7 +105,7 @@ namespace rfb {
         *port = strtol(portStart + 1, &end, 10);
       else
         *port = strtol(portStart + 2, &end, 10);
-      if (*end != '\0')
+      if (*end != '\0' && ! isAllSpace(end))
         throw rdr::Exception("invalid port specified");
 
       if ((portStart[1] != ':') && (*port < 100))

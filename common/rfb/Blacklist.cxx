@@ -40,11 +40,6 @@ Blacklist::Blacklist() {
 }
 
 Blacklist::~Blacklist() {
-  // Free the map keys
-  BlacklistMap::iterator i;
-  for (i=blm.begin(); i!=blm.end(); i++) {
-    strFree((char*)(*i).first);
-  }
 }
 
 bool Blacklist::isBlackmarked(const char* name) {
@@ -60,14 +55,14 @@ bool Blacklist::isBlackmarked(const char* name) {
     bi.marks = 1;
     bi.blockUntil = 0;
     bi.blockTimeout = initialTimeout;
-    blm[strDup(name)] = bi;
+    blm[name] = bi;
     i = blm.find(name);
   }
 
   // Entry exists - has it reached the threshold yet?
   if ((*i).second.marks >= threshold) {
     // Yes - entry is blocked - has the timeout expired?        
-    time_t now = time(0);
+    time_t now = time(nullptr);
     if (now >= (*i).second.blockUntil) {
       // Timeout has expired.  Reset timeout and allow
       // a re-try.
@@ -87,9 +82,5 @@ bool Blacklist::isBlackmarked(const char* name) {
 }
 
 void Blacklist::clearBlackmark(const char* name) {
-  BlacklistMap::iterator i = blm.find(name);
-  if (i != blm.end()) {
-    strFree((char*)(*i).first);
-    blm.erase(i);
-  }
+  blm.erase(name);
 }

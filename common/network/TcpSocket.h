@@ -28,14 +28,18 @@
 #ifndef __NETWORK_TCP_SOCKET_H__
 #define __NETWORK_TCP_SOCKET_H__
 
-#ifndef WIN32
+#include <network/Socket.h>
+
+#ifdef WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
 #include <sys/socket.h> /* for socklen_t */
 #include <netinet/in.h> /* for struct sockaddr_in */
 #endif
 
-#include <network/Socket.h>
-
 #include <list>
+#include <string>
 
 /* Tunnelling support. */
 #define TUNNEL_PORT_OFFSET 5500
@@ -52,8 +56,8 @@ namespace network {
     TcpSocket(int sock);
     TcpSocket(const char *name, int port);
 
-    virtual char* getPeerAddress();
-    virtual char* getPeerEndpoint();
+    const char* getPeerAddress() override;
+    const char* getPeerEndpoint() override;
 
   protected:
     bool enableNagles(bool enable);
@@ -64,12 +68,12 @@ namespace network {
     TcpListener(const struct sockaddr *listenaddr, socklen_t listenaddrlen);
     TcpListener(int sock);
 
-    virtual int getMyPort();
+    int getMyPort() override;
 
-    static void getMyAddresses(std::list<char*>* result);
+    static std::list<std::string> getMyAddresses();
 
   protected:
-    virtual Socket* createSocket(int fd);
+    Socket* createSocket(int fd) override;
   };
 
   void createLocalTcpListeners(std::list<SocketListener*> *listeners,
@@ -93,7 +97,7 @@ namespace network {
     TcpFilter(const char* filter);
     virtual ~TcpFilter();
 
-    virtual bool verifyConnection(Socket* s);
+    bool verifyConnection(Socket* s) override;
 
     typedef enum {Accept, Reject, Query} Action;
     struct Pattern {
@@ -104,7 +108,7 @@ namespace network {
       vnc_sockaddr_t mask; // computed from address and prefix
     };
     static Pattern parsePattern(const char* s);
-    static char* patternToStr(const Pattern& p);
+    static std::string patternToStr(const Pattern& p);
   protected:
     std::list<Pattern> filter;
   };

@@ -23,17 +23,48 @@
 #ifndef __RFB_VNCSERVER_H__
 #define __RFB_VNCSERVER_H__
 
-#include <network/Socket.h>
-
 #include <rfb/UpdateTracker.h>
 #include <rfb/SSecurity.h>
 #include <rfb/ScreenSet.h>
 
+namespace network { class Socket; }
+
 namespace rfb {
 
-  class VNCServer : public UpdateTracker,
-                    public network::SocketServer {
+  class VNCServer : public UpdateTracker {
   public:
+    // addSocket() tells the server to serve the Socket.  The caller
+    //   retains ownership of the Socket - the only way for the server
+    //   to discard a Socket is by calling shutdown() on it.
+    //   outgoing is set to true if the socket was created by connecting out
+    //   to another host, or false if the socket was created by accept()ing
+    //   an incoming connection.
+    //   accessRights allows to set the access rights to the server.
+    virtual void addSocket(network::Socket* sock, bool outgoing=false,
+                           AccessRights accessRights = AccessDefault) = 0;
+
+    // removeSocket() tells the server to stop serving the Socket.  The
+    //   caller retains ownership of the Socket - the server must NOT
+    //   delete the Socket!  This call is used mainly to cause per-Socket
+    //   resources to be freed.
+    virtual void removeSocket(network::Socket* sock) = 0;
+
+    // getSockets() gets a list of sockets.  This can be used to generate an
+    //   fd_set for calling select().
+    virtual void getSockets(std::list<network::Socket*>* sockets) = 0;
+
+    // processSocketReadEvent() tells the server there is a Socket read event.
+    //   The implementation can indicate that the Socket is no longer active
+    //   by calling shutdown() on it.  The caller will then call removeSocket()
+    //   soon after processSocketEvent returns, to allow any pre-Socket
+    //   resources to be tidied up.
+    virtual void processSocketReadEvent(network::Socket* sock) = 0;
+
+    // processSocketReadEvent() tells the server there is a Socket write event.
+    //   This is only necessary if the Socket has been put in non-blocking
+    //   mode and needs this callback to flush the buffer.
+    virtual void processSocketWriteEvent(network::Socket* sock) = 0;
+
     // blockUpdates()/unblockUpdates() tells the server that the pixel buffer
     // is currently in flux and may not be accessed. The attributes of the
     // pixel buffer may still be accessed, but not the frame buffer itself.
@@ -41,6 +72,9 @@ namespace rfb {
     // was blocked.
     virtual void blockUpdates() = 0;
     virtual void unblockUpdates() = 0;
+
+    virtual uint64_t getMsc() = 0;
+    virtual void queueMsc(uint64_t target) = 0;
 
     // setPixelBuffer() tells the server to use the given pixel buffer (and
     // optionally a modified screen layout).  If this differs in size from
@@ -81,7 +115,7 @@ namespace rfb {
     // acceptance, or false for rejection, in which case a string
     // reason may also be given.
     virtual void approveConnection(network::Socket* sock, bool accept,
-                                   const char* reason = NULL) = 0;
+                                   const char* reason = nullptr) = 0;
 
     // - Close all currently-connected clients, by calling
     //   their close() method with the supplied reason.
@@ -95,7 +129,7 @@ namespace rfb {
     // cursorData argument contains width*height rgba quadruplets with
     // non-premultiplied alpha.
     virtual void setCursor(int width, int height, const Point& hotspot,
-                           const rdr::U8* cursorData) = 0;
+                           const uint8_t* cursorData) = 0;
 
     // setCursorPos() tells the server the current position of the cursor, and
     // whether the server initiated that change (e.g. through another X11

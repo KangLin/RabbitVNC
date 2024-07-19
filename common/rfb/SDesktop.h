@@ -1,5 +1,5 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * Copyright 2009-2019 Pierre Ossman for Cendio AB
+ * Copyright 2009-2024 Pierre Ossman for Cendio AB
  * 
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -41,32 +41,29 @@
 #include <rfb/PixelBuffer.h>
 #include <rfb/VNCServer.h>
 #include <rfb/InputHandler.h>
-#include <rfb/Exception.h>
 #include <rfb/screenTypes.h>
-#include <rfb/util.h>
 
 namespace network { class Socket; }
 
 namespace rfb {
 
-  class VNCServer;
-
   class SDesktop : public InputHandler {
   public:
+    // init() is called immediately when the VNCServer gets a reference
+    // to the SDesktop, so that a reverse reference can be set up.
+    virtual void init(rfb::VNCServer* vs) = 0;
+
     // start() is called by the server when the first client authenticates
     // successfully, and can be used to begin any expensive tasks which are not
     // needed when there are no clients.  A valid PixelBuffer must have been
     // set via the VNCServer's setPixelBuffer() method by the time this call
     // returns.
-
-    virtual void start(VNCServer* vs) = 0;
+    virtual void start() {}
 
     // stop() is called by the server when there are no longer any
     // authenticated clients, and therefore the desktop can cease any
-    // expensive tasks.  No further calls to the VNCServer passed to start()
-    // can be made once stop has returned.
-
-    virtual void stop() = 0;
+    // expensive tasks.
+    virtual void stop() {}
 
     // queryConnection() is called when a connection has been
     // successfully authenticated.  The sock and userName arguments
@@ -84,11 +81,15 @@ namespace rfb {
 
     // setScreenLayout() requests to reconfigure the framebuffer and/or
     // the layout of screens.
-    virtual unsigned int setScreenLayout(int __unused_attr fb_width,
-                                         int __unused_attr fb_height,
-                                         const ScreenSet& __unused_attr layout) {
+    virtual unsigned int setScreenLayout(int /*fb_width*/,
+                                         int /*fb_height*/,
+                                         const ScreenSet& /*layout*/) {
       return resultProhibited;
     }
+
+    // frameTick() is called whenever a frame update has been processed,
+    // signalling that a good time to render new data
+    virtual void frameTick(uint64_t msc) { (void)msc; }
 
     // InputHandler interface
     // pointerEvent(), keyEvent() and clientCutText() are called in response to
@@ -104,14 +105,14 @@ namespace rfb {
     // handleClipboardAnnounce() is called to indicate a change in the
     // clipboard on a client. Call VNCServer::requestClipboard() to
     // access the actual data.
-    virtual void handleClipboardAnnounce(bool __unused_attr available) {}
+    virtual void handleClipboardAnnounce(bool /*available*/) {}
 
     // handleClipboardData() is called when a client has sent over
     // the clipboard data as a result of a previous call to
     // VNCServer::requestClipboard(). Note that this function might
     // never be called if the clipboard data was no longer available
     // when the client received the request.
-    virtual void handleClipboardData(const char* __unused_attr data) {}
+    virtual void handleClipboardData(const char* /*data*/) {}
 
   protected:
     virtual ~SDesktop() {}
@@ -123,15 +124,19 @@ namespace rfb {
   //     a plain black desktop of the specified format.
   class SStaticDesktop : public SDesktop {
   public:
-    SStaticDesktop(const Point& size) : server(0), buffer(0) {
+    SStaticDesktop(const Point& size)
+      : server(nullptr), buffer(nullptr)
+    {
       PixelFormat pf;
-      const rdr::U8 black[4] = { 0, 0, 0, 0 };
+      const uint8_t black[4] = { 0, 0, 0, 0 };
       buffer = new ManagedPixelBuffer(pf, size.x, size.y);
       if (buffer)
         buffer->fillRect(buffer->getRect(), black);
     }
-    SStaticDesktop(const Point& size, const PixelFormat& pf) : buffer(0) {
-      const rdr::U8 black[4] = { 0, 0, 0, 0 };
+    SStaticDesktop(const Point& size, const PixelFormat& pf)
+      : buffer(nullptr)
+    {
+      const uint8_t black[4] = { 0, 0, 0, 0 };
       buffer = new ManagedPixelBuffer(pf, size.x, size.y);
       if (buffer)
         buffer->fillRect(buffer->getRect(), black);
@@ -140,17 +145,13 @@ namespace rfb {
       if (buffer) delete buffer;
     }
 
-    virtual void start(VNCServer* vs) {
+    void init(VNCServer* vs) override {
       server = vs;
       server->setPixelBuffer(buffer);
     }
-    virtual void stop() {
-      server->setPixelBuffer(0);
-      server = 0;
-    }
-    virtual void queryConnection(network::Socket* sock,
-                                 const char* userName) {
-      server->approveConnection(sock, true, NULL);
+    void queryConnection(network::Socket* sock,
+                         const char* /*userName*/) override {
+      server->approveConnection(sock, true, nullptr);
     }
 
   protected:

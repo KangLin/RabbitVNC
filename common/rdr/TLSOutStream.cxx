@@ -34,8 +34,6 @@ using namespace rdr;
 
 static rfb::LogWriter vlog("TLSOutStream");
 
-enum { DEFAULT_BUF_SIZE = 16384 };
-
 ssize_t TLSOutStream::push(gnutls_transport_ptr_t str, const void* data,
 				   size_t size)
 {
@@ -43,10 +41,10 @@ ssize_t TLSOutStream::push(gnutls_transport_ptr_t str, const void* data,
   OutStream *out = self->out;
 
   delete self->saved_exception;
-  self->saved_exception = NULL;
+  self->saved_exception = nullptr;
 
   try {
-    out->writeBytes(data, size);
+    out->writeBytes((const uint8_t*)data, size);
     out->flush();
   } catch (SystemException &e) {
     vlog.error("Failure sending TLS data: %s", e.str());
@@ -64,13 +62,9 @@ ssize_t TLSOutStream::push(gnutls_transport_ptr_t str, const void* data,
 }
 
 TLSOutStream::TLSOutStream(OutStream* _out, gnutls_session_t _session)
-  : session(_session), out(_out), bufSize(DEFAULT_BUF_SIZE), offset(0),
-    saved_exception(NULL)
+  : session(_session), out(_out), saved_exception(nullptr)
 {
   gnutls_transport_ptr_t recv, send;
-
-  ptr = start = new U8[bufSize];
-  end = start + bufSize;
 
   gnutls_transport_set_push_function(session, push);
   gnutls_transport_get_ptr2(session, &recv, &send);
@@ -85,55 +79,34 @@ TLSOutStream::~TLSOutStream()
   } catch (Exception&) {
   }
 #endif
-  gnutls_transport_set_push_function(session, NULL);
+  gnutls_transport_set_push_function(session, nullptr);
 
-  delete [] start;
   delete saved_exception;
-}
-
-size_t TLSOutStream::length()
-{
-  return offset + ptr - start;
 }
 
 void TLSOutStream::flush()
 {
-  U8* sentUpTo;
-
-  // Only give GnuTLS larger chunks if corked to minimize overhead
-  if (corked && ((ptr - start) < 1024))
-    return;
-
-  sentUpTo = start;
-  while (sentUpTo < ptr) {
-    size_t n = writeTLS(sentUpTo, ptr - sentUpTo);
-    sentUpTo += n;
-    offset += n;
-  }
-
-  ptr = start;
+  BufferedOutStream::flush();
   out->flush();
 }
 
 void TLSOutStream::cork(bool enable)
 {
-  OutStream::cork(enable);
-
+  BufferedOutStream::cork(enable);
   out->cork(enable);
 }
 
-void TLSOutStream::overrun(size_t needed)
+bool TLSOutStream::flushBuffer()
 {
-  if (needed > bufSize)
-    throw Exception("TLSOutStream overrun: buffer size exceeded");
+  while (sentUpTo < ptr) {
+    size_t n = writeTLS(sentUpTo, ptr - sentUpTo);
+    sentUpTo += n;
+  }
 
-  // A cork might prevent the flush, so disable it temporarily
-  corked = false;
-  flush();
-  corked = true;
+  return true;
 }
 
-size_t TLSOutStream::writeTLS(const U8* data, size_t length)
+size_t TLSOutStream::writeTLS(const uint8_t* data, size_t length)
 {
   int n;
 

@@ -31,12 +31,12 @@ using namespace rdr;
 static const size_t DEFAULT_BUF_SIZE = 16384;
 static const size_t MAX_BUF_SIZE = 32 * 1024 * 1024;
 
-BufferedOutStream::BufferedOutStream()
-  : bufSize(DEFAULT_BUF_SIZE), offset(0)
+BufferedOutStream::BufferedOutStream(bool emulateCork_)
+  : bufSize(DEFAULT_BUF_SIZE), offset(0), emulateCork(emulateCork_)
 {
-  ptr = start = sentUpTo = new U8[bufSize];
+  ptr = start = sentUpTo = new uint8_t[bufSize];
   end = start + bufSize;
-  gettimeofday(&lastSizeCheck, NULL);
+  gettimeofday(&lastSizeCheck, nullptr);
   peakUsage = 0;
 }
 
@@ -55,6 +55,10 @@ void BufferedOutStream::flush()
 {
   struct timeval now;
 
+  // Only give larger chunks if corked to minimize overhead
+  if (corked && emulateCork && ((ptr - sentUpTo) < 1024))
+    return;
+
   while (sentUpTo < ptr) {
     size_t len;
 
@@ -71,7 +75,7 @@ void BufferedOutStream::flush()
     ptr = sentUpTo = start;
 
   // Time to shrink an excessive buffer?
-  gettimeofday(&now, NULL);
+  gettimeofday(&now, nullptr);
   if ((sentUpTo == ptr) && (bufSize > DEFAULT_BUF_SIZE) &&
       ((now.tv_sec < lastSizeCheck.tv_sec) ||
        (now.tv_sec > (lastSizeCheck.tv_sec + 5)))) {
@@ -84,12 +88,12 @@ void BufferedOutStream::flush()
 
       // We know the buffer is empty, so just reset everything
       delete [] start;
-      ptr = start = sentUpTo = new U8[newSize];
+      ptr = start = sentUpTo = new uint8_t[newSize];
       end = start + newSize;
       bufSize = newSize;
     }
 
-    gettimeofday(&lastSizeCheck, NULL);
+    gettimeofday(&lastSizeCheck, nullptr);
     peakUsage = 0;
   }
 }
@@ -101,11 +105,17 @@ bool BufferedOutStream::hasBufferedData()
 
 void BufferedOutStream::overrun(size_t needed)
 {
+  bool oldCorked;
   size_t totalNeeded, newSize;
-  U8* newBuffer;
+  uint8_t* newBuffer;
 
   // First try to get rid of the data we have
+  // (use corked to make things a bit more efficient since we're not
+  // trying to flush out everything, just make some room)
+  oldCorked = corked;
+  cork(true);
   flush();
+  cork(oldCorked);
 
   // Make note of the total needed space
   totalNeeded = needed + (ptr - sentUpTo);
@@ -137,7 +147,7 @@ void BufferedOutStream::overrun(size_t needed)
   while (newSize < totalNeeded)
     newSize *= 2;
 
-  newBuffer = new U8[newSize];
+  newBuffer = new uint8_t[newSize];
   memcpy(newBuffer, sentUpTo, ptr - sentUpTo);
   delete [] start;
   bufSize = newSize;
@@ -146,7 +156,7 @@ void BufferedOutStream::overrun(size_t needed)
   sentUpTo = start = newBuffer;
   end = newBuffer + newSize;
 
-  gettimeofday(&lastSizeCheck, NULL);
+  gettimeofday(&lastSizeCheck, nullptr);
   peakUsage = totalNeeded;
 
   return;

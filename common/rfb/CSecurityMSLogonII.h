@@ -1,5 +1,6 @@
-/* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
- * 
+/* 
+ * Copyright (C) 2022 Dinglan Peng
+ *    
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -15,33 +16,33 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
  * USA.
  */
-#ifndef __RFB_PASSWORD_H__
-#define __RFB_PASSWORD_H__
 
-#include <rfb/util.h>
+#ifndef __C_SECURITY_MSLOGONII_H__
+#define __C_SECURITY_MSLOGONII_H__
+
+#ifndef HAVE_NETTLE
+#error "This header should not be compiled without HAVE_NETTLE defined"
+#endif
+
+#include <nettle/bignum.h>
+#include <rfb/CSecurity.h>
+#include <rfb/Security.h>
 
 namespace rfb {
-
-  class ObfuscatedPasswd;
-
-  class PlainPasswd : public CharArray {
+  class CSecurityMSLogonII : public CSecurity {
   public:
-    PlainPasswd();
-    PlainPasswd(char* pwd);
-    PlainPasswd(size_t len);
-    PlainPasswd(const ObfuscatedPasswd& obfPwd);
-    ~PlainPasswd();
-    void replaceBuf(char* b);
-  };
+    CSecurityMSLogonII(CConnection* cc);
+    virtual ~CSecurityMSLogonII();
+    bool processMsg() override;
+    int getType() const override { return secTypeMSLogonII; }
+    bool isSecure() const override { return false; }
 
-  class ObfuscatedPasswd : public CharArray {
-  public:
-    ObfuscatedPasswd();
-    ObfuscatedPasswd(size_t l);
-    ObfuscatedPasswd(const PlainPasswd& plainPwd);
-    ~ObfuscatedPasswd();
-    size_t length;
-  };
+  private:
+    bool readKey();
+    void writeCredentials();
 
+    mpz_t g, p, A, b, B, k;
+  };
 }
+
 #endif

@@ -30,20 +30,20 @@ namespace rfb {
     TightJPEGEncoder(SConnection* conn);
     virtual ~TightJPEGEncoder();
 
-    virtual bool isSupported();
+    bool isSupported() override;
 
-    virtual void setQualityLevel(int level);
-    virtual void setFineQualityLevel(int quality, int subsampling);
+    void setQualityLevel(int level) override;
+    void setFineQualityLevel(int quality, int subsampling) override;
 
-    virtual int getQualityLevel();
+    int getQualityLevel() override;
 
-    virtual void writeRect(const PixelBuffer* pb, const Palette& palette);
-    virtual void writeSolidRect(int width, int height,
-                                const PixelFormat& pf,
-                                const rdr::U8* colour);
+    void writeRect(const PixelBuffer* pb,
+                   const Palette& palette) override;
+    void writeSolidRect(int width, int height, const PixelFormat& pf,
+                        const uint8_t* colour) override;
 
   protected:
-    void writeCompact(rdr::U32 value, rdr::OutStream* os);
+    void writeCompact(uint32_t value, rdr::OutStream* os);
 
   protected:
     JpegCompressor jc;

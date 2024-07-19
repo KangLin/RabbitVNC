@@ -37,9 +37,9 @@ namespace rdr {
     int getFd() { return fd; }
 
   private:
-    virtual bool fillBuffer(size_t maxSize);
+    bool fillBuffer() override;
 
-    size_t readFd(void* buf, size_t len);
+    size_t readFd(uint8_t* buf, size_t len);
 
     int fd;
     bool closeWhenDone;

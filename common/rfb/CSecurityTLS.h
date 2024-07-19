@@ -22,10 +22,6 @@
 #ifndef __C_SECURITY_TLS_H__
 #define __C_SECURITY_TLS_H__
 
-#ifdef HAVE_CONFIG_H
-#include <config.h>
-#endif
-
 #ifndef HAVE_GNUTLS
 #error "This header should not be compiled without HAVE_GNUTLS defined"
 #endif
@@ -38,20 +34,16 @@
 #include <gnutls/gnutls.h>
 
 namespace rfb {
-  class UserMsgBox;
   class CSecurityTLS : public CSecurity {
   public:
-    CSecurityTLS(CConnection* cc, bool _anon);
+    CSecurityTLS(CConnection* cc, bool _anon, UserMsgBox *msg);
     virtual ~CSecurityTLS();
-    virtual bool processMsg();
-    virtual int getType() const { return anon ? secTypeTLSNone : secTypeX509None; }
-    virtual const char* description() const
-      { return anon ? "TLS Encryption without VncAuth" : "X509 Encryption without VncAuth"; }
-    virtual bool isSecure() const { return !anon; }
+    bool processMsg() override;
+    int getType() const override { return anon ? secTypeTLSNone : secTypeX509None; }
+    bool isSecure() const override { return !anon; }
 
     static StringParameter X509CA;
     static StringParameter X509CRL;
-    static UserMsgBox *msg;
 
   protected:
     void shutdown();
@@ -66,13 +58,14 @@ namespace rfb {
     gnutls_certificate_credentials_t cert_cred;
     bool anon;
 
-    char *cafile, *crlfile;
-
     rdr::InStream* tlsis;
     rdr::OutStream* tlsos;
 
     rdr::InStream* rawis;
     rdr::OutStream* rawos;
+    
+    UserMsgBox *msg;
+    
   };
 }
 

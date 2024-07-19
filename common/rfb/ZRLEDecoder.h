@@ -1,4 +1,5 @@
 /* Copyright (C) 2002-2005 RealVNC Ltd.  All Rights Reserved.
+ * Copyright 2014-2022 Pierre Ossman for Cendio AB
  * 
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,15 +24,24 @@
 
 namespace rfb {
 
+  class PixelFormat;
+
   class ZRLEDecoder : public Decoder {
   public:
     ZRLEDecoder();
     virtual ~ZRLEDecoder();
-    virtual bool readRect(const Rect& r, rdr::InStream* is,
-                          const ServerParams& server, rdr::OutStream* os);
-    virtual void decodeRect(const Rect& r, const void* buffer,
-                            size_t buflen, const ServerParams& server,
-                            ModifiablePixelBuffer* pb);
+    bool readRect(const Rect& r, rdr::InStream* is,
+                  const ServerParams& server,
+                  rdr::OutStream* os) override;
+    void decodeRect(const Rect& r, const uint8_t* buffer,
+                    size_t buflen, const ServerParams& server,
+                    ModifiablePixelBuffer* pb) override;
+
+  private:
+    template<class T>
+    void zrleDecode(const Rect& r, rdr::InStream* is,
+                    const PixelFormat& pf, ModifiablePixelBuffer* pb);
+
   private:
     rdr::ZlibInStream zis;
   };

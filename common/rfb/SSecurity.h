@@ -43,9 +43,8 @@
 #ifndef __RFB_SSECURITY_H__
 #define __RFB_SSECURITY_H__
 
-#include <rdr/types.h>
 #include <rfb/SConnection.h>
-#include <rfb/util.h>
+
 #include <list>
 
 namespace rfb {
@@ -63,7 +62,7 @@ namespace rfb {
     // for this security type.
     virtual const char* getUserName() const = 0;
 
-    virtual SConnection::AccessRights getAccessRights() const { return SConnection::AccessDefault; }
+    virtual AccessRights getAccessRights() const { return AccessDefault; }
 
   protected:
     SConnection* sc;

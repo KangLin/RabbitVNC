@@ -20,6 +20,8 @@
 #include <assert.h>
 #include <stdio.h>
 
+#include <vector>
+
 #include <rdr/InStream.h>
 #include <rdr/ZlibInStream.h>
 
@@ -50,7 +52,7 @@ CMsgReader::~CMsgReader()
 bool CMsgReader::readServerInit()
 {
   int width, height;
-  rdr::U32 len;
+  uint32_t len;
 
   if (!is->hasData(2 + 2 + 16 + 4))
     return false;
@@ -67,10 +69,15 @@ bool CMsgReader::readServerInit()
   if (!is->hasDataOrRestore(len))
     return false;
   is->clearRestorePoint();
-  CharArray name(len + 1);
-  is->readBytes(name.buf, len);
-  name.buf[len] = '\0';
-  handler->serverInit(width, height, pf, name.buf);
+  std::vector<char> name(len + 1);
+  is->readBytes((uint8_t*)name.data(), len);
+  name[len] = '\0';
+
+  if (isValidUTF8(name.data()))
+    handler->serverInit(width, height, pf, name.data());
+  else
+    handler->serverInit(width, height, pf,
+                        latin1ToUTF8(name.data()).c_str());
 
   return true;
 }
@@ -224,10 +231,10 @@ bool CMsgReader::readSetColourMapEntries()
     return false;
   is->clearRestorePoint();
 
-  rdr::U16Array rgbs(nColours * 3);
-  for (int i = 0; i < nColours * 3; i++)
-    rgbs.buf[i] = is->readU16();
-  handler->setColourMapEntries(firstColour, nColours, rgbs.buf);
+  std::vector<uint16_t> rgbs(nColours * 3);
+  for (size_t i = 0; i < rgbs.size(); i++)
+    rgbs[i] = is->readU16();
+  handler->setColourMapEntries(firstColour, nColours, rgbs.data());
 
   return true;
 }
@@ -246,10 +253,10 @@ bool CMsgReader::readServerCutText()
   is->setRestorePoint();
 
   is->skip(3);
-  rdr::U32 len = is->readU32();
+  uint32_t len = is->readU32();
 
   if (len & 0x80000000) {
-    rdr::S32 slen = len;
+    int32_t slen = len;
     slen = -slen;
     if (readExtendedClipboard(slen)) {
       is->clearRestorePoint();
@@ -269,18 +276,22 @@ bool CMsgReader::readServerCutText()
     vlog.error("cut text too long (%d bytes) - ignoring",len);
     return true;
   }
-  CharArray ca(len);
-  is->readBytes(ca.buf, len);
-  CharArray filtered(convertLF(ca.buf, len));
-  handler->serverCutText(filtered.buf);
+
+  std::vector<char> ca(len);
+  is->readBytes((uint8_t*)ca.data(), len);
+
+  std::string utf8(latin1ToUTF8(ca.data(), ca.size()));
+  std::string filtered(convertLF(utf8.data(), utf8.size()));
+
+  handler->serverCutText(filtered.c_str());
 
   return true;
 }
 
-bool CMsgReader::readExtendedClipboard(rdr::S32 len)
+bool CMsgReader::readExtendedClipboard(int32_t len)
 {
-  rdr::U32 flags;
-  rdr::U32 action;
+  uint32_t flags;
+  uint32_t action;
 
   if (!is->hasData(len))
     return false;
@@ -299,7 +310,7 @@ bool CMsgReader::readExtendedClipboard(rdr::S32 len)
   if (action & clipboardCaps) {
     int i;
     size_t num;
-    rdr::U32 lengths[16];
+    uint32_t lengths[16];
 
     num = 0;
     for (i = 0;i < 16;i++) {
@@ -307,7 +318,7 @@ bool CMsgReader::readExtendedClipboard(rdr::S32 len)
         num++;
     }
 
-    if (len < (rdr::S32)(4 + 4*num))
+    if (len < (int32_t)(4 + 4*num))
       throw Exception("Invalid extended clipboard message");
 
     num = 0;
@@ -323,7 +334,7 @@ bool CMsgReader::readExtendedClipboard(rdr::S32 len)
     int i;
     size_t num;
     size_t lengths[16];
-    rdr::U8* buffers[16];
+    uint8_t* buffers[16];
 
     zis.setUnderlying(is, len - 4);
 
@@ -337,24 +348,40 @@ bool CMsgReader::readExtendedClipboard(rdr::S32 len)
 
       lengths[num] = zis.readU32();
 
-      if (!zis.hasData(lengths[num]))
-        throw Exception("Extended clipboard decode error");
-
       if (lengths[num] > (size_t)maxCutText) {
         vlog.error("Extended clipboard data too long (%d bytes) - ignoring",
                    (unsigned)lengths[num]);
-        zis.skip(lengths[num]);
+
+        // Slowly (safely) drain away the data
+        while (lengths[num] > 0) {
+          size_t chunk;
+
+          if (!zis.hasData(1))
+            throw Exception("Extended clipboard decode error");
+
+          chunk = zis.avail();
+          if (chunk > lengths[num])
+            chunk = lengths[num];
+
+          zis.skip(chunk);
+          lengths[num] -= chunk;
+        }
+
         flags &= ~(1 << i);
+
         continue;
       }
 
-      buffers[num] = new rdr::U8[lengths[num]];
+      if (!zis.hasData(lengths[num]))
+        throw Exception("Extended clipboard decode error");
+
+      buffers[num] = new uint8_t[lengths[num]];
       zis.readBytes(buffers[num], lengths[num]);
       num++;
     }
 
     zis.flushUnderlying();
-    zis.setUnderlying(NULL, 0);
+    zis.setUnderlying(nullptr, 0);
 
     handler->handleClipboardProvide(flags, lengths, buffers);
 
@@ -370,7 +397,7 @@ bool CMsgReader::readExtendedClipboard(rdr::S32 len)
       handler->handleClipboardRequest(flags);
       break;
     case clipboardPeek:
-      handler->handleClipboardPeek(flags);
+      handler->handleClipboardPeek();
       break;
     case clipboardNotify:
       handler->handleClipboardNotify(flags);
@@ -385,9 +412,9 @@ bool CMsgReader::readExtendedClipboard(rdr::S32 len)
 
 bool CMsgReader::readFence()
 {
-  rdr::U32 flags;
-  rdr::U8 len;
-  char data[64];
+  uint32_t flags;
+  uint8_t len;
+  uint8_t data[64];
 
   if (!is->hasData(3 + 4 + 1))
     return false;
@@ -456,18 +483,18 @@ bool CMsgReader::readSetXCursor(int width, int height, const Point& hotspot)
   if (width > maxCursorSize || height > maxCursorSize)
     throw Exception("Too big cursor");
 
-  rdr::U8Array rgba(width*height*4);
+  std::vector<uint8_t> rgba(width*height*4);
 
   if (width * height > 0) {
-    rdr::U8 pr, pg, pb;
-    rdr::U8 sr, sg, sb;
+    uint8_t pr, pg, pb;
+    uint8_t sr, sg, sb;
     int data_len = ((width+7)/8) * height;
     int mask_len = ((width+7)/8) * height;
-    rdr::U8Array data(data_len);
-    rdr::U8Array mask(mask_len);
+    std::vector<uint8_t> data(data_len);
+    std::vector<uint8_t> mask(mask_len);
 
     int x, y;
-    rdr::U8* out;
+    uint8_t* out;
 
     if (!is->hasData(3 + 3 + data_len + mask_len))
       return false;
@@ -480,17 +507,17 @@ bool CMsgReader::readSetXCursor(int width, int height, const Point& hotspot)
     sg = is->readU8();
     sb = is->readU8();
 
-    is->readBytes(data.buf, data_len);
-    is->readBytes(mask.buf, mask_len);
+    is->readBytes(data.data(), data.size());
+    is->readBytes(mask.data(), mask.size());
 
     int maskBytesPerRow = (width+7)/8;
-    out = rgba.buf;
+    out = rgba.data();
     for (y = 0;y < height;y++) {
       for (x = 0;x < width;x++) {
         int byte = y * maskBytesPerRow + x / 8;
         int bit = 7 - x % 8;
 
-        if (data.buf[byte] & (1 << bit)) {
+        if (data[byte] & (1 << bit)) {
           out[0] = pr;
           out[1] = pg;
           out[2] = pb;
@@ -500,7 +527,7 @@ bool CMsgReader::readSetXCursor(int width, int height, const Point& hotspot)
           out[2] = sb;
         }
 
-        if (mask.buf[byte] & (1 << bit))
+        if (mask[byte] & (1 << bit))
           out[3] = 255;
         else
           out[3] = 0;
@@ -510,7 +537,7 @@ bool CMsgReader::readSetXCursor(int width, int height, const Point& hotspot)
     }
   }
 
-  handler->setCursor(width, height, hotspot, rgba.buf);
+  handler->setCursor(width, height, hotspot, rgba.data());
 
   return true;
 }
@@ -522,23 +549,23 @@ bool CMsgReader::readSetCursor(int width, int height, const Point& hotspot)
 
   int data_len = width * height * (handler->server.pf().bpp/8);
   int mask_len = ((width+7)/8) * height;
-  rdr::U8Array data(data_len);
-  rdr::U8Array mask(mask_len);
+  std::vector<uint8_t> data(data_len);
+  std::vector<uint8_t> mask(mask_len);
 
   int x, y;
-  rdr::U8Array rgba(width*height*4);
-  rdr::U8* in;
-  rdr::U8* out;
+  std::vector<uint8_t> rgba(width*height*4);
+  uint8_t* in;
+  uint8_t* out;
 
   if (!is->hasData(data_len + mask_len))
     return false;
 
-  is->readBytes(data.buf, data_len);
-  is->readBytes(mask.buf, mask_len);
+  is->readBytes(data.data(), data.size());
+  is->readBytes(mask.data(), mask.size());
 
   int maskBytesPerRow = (width+7)/8;
-  in = data.buf;
-  out = rgba.buf;
+  in = data.data();
+  out = rgba.data();
   for (y = 0;y < height;y++) {
     for (x = 0;x < width;x++) {
       int byte = y * maskBytesPerRow + x / 8;
@@ -546,7 +573,7 @@ bool CMsgReader::readSetCursor(int width, int height, const Point& hotspot)
 
       handler->server.pf().rgbFromBuffer(out, in, 1);
 
-      if (mask.buf[byte] & (1 << bit))
+      if (mask[byte] & (1 << bit))
         out[3] = 255;
       else
         out[3] = 0;
@@ -556,7 +583,7 @@ bool CMsgReader::readSetCursor(int width, int height, const Point& hotspot)
     }
   }
 
-  handler->setCursor(width, height, hotspot, rgba.buf);
+  handler->setCursor(width, height, hotspot, rgba.data());
 
   return true;
 }
@@ -572,7 +599,7 @@ bool CMsgReader::readSetCursorWithAlpha(int width, int height, const Point& hots
 
   bool ret;
 
-  rdr::U8* buf;
+  uint8_t* buf;
   int stride;
 
   // We can't use restore points as the decoder likely wants to as well, so
@@ -601,7 +628,7 @@ bool CMsgReader::readSetCursorWithAlpha(int width, int height, const Point& hots
   assert(stride == width);
 
   for (int i = 0;i < pb.area();i++) {
-    rdr::U8 alpha;
+    uint8_t alpha;
 
     alpha = buf[3];
     if (alpha == 0)
@@ -627,38 +654,38 @@ bool CMsgReader::readSetVMwareCursor(int width, int height, const Point& hotspot
   if (width > maxCursorSize || height > maxCursorSize)
     throw Exception("Too big cursor");
 
-  rdr::U8 type;
+  uint8_t type;
 
   if (!is->hasData(1 + 1))
     return false;
 
+  is->setRestorePoint();
+
   type = is->readU8();
   is->skip(1);
 
-  is->setRestorePoint();
-
   if (type == 0) {
     int len = width * height * (handler->server.pf().bpp/8);
-    rdr::U8Array andMask(len);
-    rdr::U8Array xorMask(len);
+    std::vector<uint8_t> andMask(len);
+    std::vector<uint8_t> xorMask(len);
 
-    rdr::U8Array data(width*height*4);
+    std::vector<uint8_t> data(width*height*4);
 
-    rdr::U8* andIn;
-    rdr::U8* xorIn;
-    rdr::U8* out;
+    uint8_t* andIn;
+    uint8_t* xorIn;
+    uint8_t* out;
     int Bpp;
 
     if (!is->hasDataOrRestore(len + len))
       return false;
     is->clearRestorePoint();
 
-    is->readBytes(andMask.buf, len);
-    is->readBytes(xorMask.buf, len);
+    is->readBytes(andMask.data(), andMask.size());
+    is->readBytes(xorMask.data(), xorMask.size());
 
-    andIn = andMask.buf;
-    xorIn = xorMask.buf;
-    out = data.buf;
+    andIn = andMask.data();
+    xorIn = xorMask.data();
+    out = data.data();
     Bpp = handler->server.pf().bpp/8;
     for (int y = 0;y < height;y++) {
       for (int x = 0;x < width;x++) {
@@ -670,7 +697,7 @@ bool CMsgReader::readSetVMwareCursor(int width, int height, const Point& hotspot
         xorIn += Bpp;
 
         if (andPixel == 0) {
-          rdr::U8 r, g, b;
+          uint8_t r, g, b;
 
           // Opaque pixel
 
@@ -706,18 +733,18 @@ bool CMsgReader::readSetVMwareCursor(int width, int height, const Point& hotspot
       }
     }
 
-    handler->setCursor(width, height, hotspot, data.buf);
+    handler->setCursor(width, height, hotspot, data.data());
   } else if (type == 1) {
-    rdr::U8Array data(width*height*4);
+    std::vector<uint8_t> data(width*height*4);
 
     if (!is->hasDataOrRestore(width*height*4))
       return false;
     is->clearRestorePoint();
 
     // FIXME: Is alpha premultiplied?
-    is->readBytes(data.buf, width*height*4);
+    is->readBytes(data.data(), data.size());
 
-    handler->setCursor(width, height, hotspot, data.buf);
+    handler->setCursor(width, height, hotspot, data.data());
   } else {
     throw Exception("Unknown cursor type");
   }
@@ -727,7 +754,7 @@ bool CMsgReader::readSetVMwareCursor(int width, int height, const Point& hotspot
 
 bool CMsgReader::readSetDesktopName(int x, int y, int w, int h)
 {
-  rdr::U32 len;
+  uint32_t len;
 
   if (!is->hasData(4))
     return false;
@@ -740,15 +767,21 @@ bool CMsgReader::readSetDesktopName(int x, int y, int w, int h)
     return false;
   is->clearRestorePoint();
 
-  CharArray name(len + 1);
-  is->readBytes(name.buf, len);
-  name.buf[len] = '\0';
+  std::vector<char> name(len + 1);
+  is->readBytes((uint8_t*)name.data(), len);
+  name[len] = '\0';
 
   if (x || y || w || h) {
     vlog.error("Ignoring DesktopName rect with non-zero position/size");
-  } else {
-    handler->setName(name.buf);
+    return true;
   }
+
+  if (!isValidUTF8(name.data())) {
+    vlog.error("Ignoring DesktopName rect with invalid UTF-8 sequence");
+    return true;
+  }
+
+  handler->setName(name.data());
 
   return true;
 }
@@ -756,7 +789,7 @@ bool CMsgReader::readSetDesktopName(int x, int y, int w, int h)
 bool CMsgReader::readExtendedDesktopSize(int x, int y, int w, int h)
 {
   unsigned int screens, i;
-  rdr::U32 id, flags;
+  uint32_t id, flags;
   int sx, sy, sw, sh;
   ScreenSet layout;
 
@@ -790,31 +823,31 @@ bool CMsgReader::readExtendedDesktopSize(int x, int y, int w, int h)
 
 bool CMsgReader::readLEDState()
 {
-  rdr::U8 state;
+  uint8_t ledState;
 
   if (!is->hasData(1))
     return false;
 
-  state = is->readU8();
+  ledState = is->readU8();
 
-  handler->setLEDState(state);
+  handler->setLEDState(ledState);
 
   return true;
 }
 
 bool CMsgReader::readVMwareLEDState()
 {
-  rdr::U32 state;
+  uint32_t ledState;
 
   if (!is->hasData(4))
     return false;
 
-  state = is->readU32();
+  ledState = is->readU32();
 
   // As luck has it, this extension uses the same bit definitions,
   // so no conversion required
 
-  handler->setLEDState(state);
+  handler->setLEDState(ledState);
 
   return true;
 }

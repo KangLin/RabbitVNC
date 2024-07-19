@@ -28,6 +28,7 @@
 #include <rfb/CConnection.h>
 #include <rfb/CSecurityVeNCrypt.h>
 #include <rfb/LogWriter.h>
+#include <algorithm>
 #include <list>
 
 using namespace rfb;
@@ -36,8 +37,9 @@ using namespace std;
 
 static LogWriter vlog("CVeNCrypt");
 
-CSecurityVeNCrypt::CSecurityVeNCrypt(CConnection* cc, SecurityClient* sec)
-  : CSecurity(cc), csecurity(NULL), security(sec)
+CSecurityVeNCrypt::CSecurityVeNCrypt(CConnection* cc_,
+                                     SecurityClient* sec)
+  : CSecurity(cc_), csecurity(nullptr), security(sec)
 {
   haveRecvdMajorVersion = false;
   haveRecvdMinorVersion = false;
@@ -50,7 +52,7 @@ CSecurityVeNCrypt::CSecurityVeNCrypt(CConnection* cc, SecurityClient* sec)
   minorVersion = 0;
   chosenType = secTypeVeNCrypt;
   nAvailableTypes = 0;
-  availableTypes = NULL;
+  availableTypes = nullptr;
 }
 
 CSecurityVeNCrypt::~CSecurityVeNCrypt()
@@ -82,7 +84,8 @@ bool CSecurityVeNCrypt::processMsg()
   }
 
   /* major version in upper 8 bits and minor version in lower 8 bits */
-  U16 Version = (((U16) majorVersion) << 8) | ((U16) minorVersion);
+  uint16_t Version = (((uint16_t) majorVersion) << 8) |
+                      ((uint16_t) minorVersion);
   
   if (!haveSentVersion) {
     /* Currently we don't support former VeNCrypt 0.1 */
@@ -127,7 +130,7 @@ bool CSecurityVeNCrypt::processMsg()
     if (!nAvailableTypes)
       throw AuthFailureException("The server reported no VeNCrypt sub-types");
 
-    availableTypes = new rdr::U32[nAvailableTypes];
+    availableTypes = new uint32_t[nAvailableTypes];
     haveNumberOfTypes = true;
   }
 
@@ -150,31 +153,26 @@ bool CSecurityVeNCrypt::processMsg()
     /* make a choice and send it to the server, meanwhile set up the stack */
     if (!haveChosenType) {
       chosenType = secTypeInvalid;
-      U8 i;
-      list<U32>::iterator j;
-      list<U32> secTypes;
+      uint8_t i;
+      list<uint32_t> secTypes;
 
       secTypes = security->GetEnabledExtSecTypes();
 
       /* Honor server's security type order */
       for (i = 0; i < nAvailableTypes; i++) {
-        for (j = secTypes.begin(); j != secTypes.end(); j++) {
-	  if (*j == availableTypes[i]) {
-	    chosenType = *j;
-	    break;
-	  }
-	}
-
-	if (chosenType != secTypeInvalid)
-	  break;
+        if (std::find(secTypes.begin(), secTypes.end(),
+                      availableTypes[i]) != secTypes.end()) {
+          chosenType = availableTypes[i];
+          break;
+        }
       }
-
-      vlog.info("Choosing security type %s (%d)", secTypeName(chosenType),
-		 chosenType);
 
       /* Set up the stack according to the chosen type: */
       if (chosenType == secTypeInvalid || chosenType == secTypeVeNCrypt)
 	throw AuthFailureException("No valid VeNCrypt sub-type");
+
+      vlog.info("Choosing security type %s (%d)", secTypeName(chosenType),
+		 chosenType);
 
       csecurity = security->GetCSecurity(cc, chosenType);
 
@@ -194,13 +192,6 @@ bool CSecurityVeNCrypt::processMsg()
   }
 
   return csecurity->processMsg();
-}
-
-const char* CSecurityVeNCrypt::description() const
-{
-  if (csecurity)
-    return csecurity->description();
-  return "VeNCrypt";
 }
 
 bool CSecurityVeNCrypt::isSecure() const

@@ -19,7 +19,7 @@
 namespace rfb {
 
 
-inline Pixel PixelFormat::pixelFromBuffer(const rdr::U8* buffer) const
+inline Pixel PixelFormat::pixelFromBuffer(const uint8_t* buffer) const
 {
   Pixel p;
 
@@ -30,8 +30,10 @@ inline Pixel PixelFormat::pixelFromBuffer(const rdr::U8* buffer) const
     case 32:
       p |= ((Pixel)*(buffer++)) << 24;
       p |= ((Pixel)*(buffer++)) << 16;
+      /* fall through */
     case 16:
       p |= ((Pixel)*(buffer++)) << 8;
+      /* fall through */
     case 8:
       p |= *buffer;
     }
@@ -50,15 +52,17 @@ inline Pixel PixelFormat::pixelFromBuffer(const rdr::U8* buffer) const
 }
 
 
-inline void PixelFormat::bufferFromPixel(rdr::U8* buffer, Pixel p) const
+inline void PixelFormat::bufferFromPixel(uint8_t* buffer, Pixel p) const
 {
   if (bigEndian) {
     switch (bpp) {
     case 32:
       *(buffer++) = (p >> 24) & 0xff;
       *(buffer++) = (p >> 16) & 0xff;
+      /* fall through */
     case 16:
       *(buffer++) = (p >>  8) & 0xff;
+      /* fall through */
     case 8:
       *(buffer++) = (p >>  0) & 0xff;
     }
@@ -75,7 +79,7 @@ inline void PixelFormat::bufferFromPixel(rdr::U8* buffer, Pixel p) const
 }
 
 
-inline Pixel PixelFormat::pixelFromRGB(rdr::U16 red, rdr::U16 green, rdr::U16 blue) const
+inline Pixel PixelFormat::pixelFromRGB(uint16_t red, uint16_t green, uint16_t blue) const
 {
   Pixel p;
 
@@ -87,7 +91,7 @@ inline Pixel PixelFormat::pixelFromRGB(rdr::U16 red, rdr::U16 green, rdr::U16 bl
 }
 
 
-inline Pixel PixelFormat::pixelFromRGB(rdr::U8 red, rdr::U8 green, rdr::U8 blue) const
+inline Pixel PixelFormat::pixelFromRGB(uint8_t red, uint8_t green, uint8_t blue) const
 {
   Pixel p;
 
@@ -99,9 +103,9 @@ inline Pixel PixelFormat::pixelFromRGB(rdr::U8 red, rdr::U8 green, rdr::U8 blue)
 }
 
 
-inline void PixelFormat::rgbFromPixel(Pixel p, rdr::U16 *r, rdr::U16 *g, rdr::U16 *b) const
+inline void PixelFormat::rgbFromPixel(Pixel p, uint16_t *r, uint16_t *g, uint16_t *b) const
 {
-  rdr::U8 _r, _g, _b;
+  uint8_t _r, _g, _b;
 
   _r = p >> redShift;
   _g = p >> greenShift;
@@ -117,9 +121,9 @@ inline void PixelFormat::rgbFromPixel(Pixel p, rdr::U16 *r, rdr::U16 *g, rdr::U1
 }
 
 
-inline void PixelFormat::rgbFromPixel(Pixel p, rdr::U8 *r, rdr::U8 *g, rdr::U8 *b) const
+inline void PixelFormat::rgbFromPixel(Pixel p, uint8_t *r, uint8_t *g, uint8_t *b) const
 {
-  rdr::U8 _r, _g, _b;
+  uint8_t _r, _g, _b;
 
   _r = p >> redShift;
   _g = p >> greenShift;

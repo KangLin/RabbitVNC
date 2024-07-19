@@ -22,10 +22,6 @@
  * SSecurityVeNCrypt
  */
 
-#ifdef HAVE_CONFIG_H
-#include <config.h>
-#endif
-
 #include <rfb/SSecurityVeNCrypt.h>
 #include <rfb/Exception.h>
 #include <rfb/LogWriter.h>
@@ -38,10 +34,11 @@ using namespace std;
 
 static LogWriter vlog("SVeNCrypt");
 
-SSecurityVeNCrypt::SSecurityVeNCrypt(SConnection* sc, SecurityServer *sec)
-  : SSecurity(sc), security(sec)
+SSecurityVeNCrypt::SSecurityVeNCrypt(SConnection* sc_,
+                                     SecurityServer *sec)
+  : SSecurity(sc_), security(sec)
 {
-  ssecurity = NULL;
+  ssecurity = nullptr;
   haveSentVersion = false;
   haveRecvdMajorVersion = false;
   haveRecvdMinorVersion = false;
@@ -51,7 +48,7 @@ SSecurityVeNCrypt::SSecurityVeNCrypt(SConnection* sc, SecurityServer *sec)
   haveChosenType = false;
   chosenType = secTypeVeNCrypt;
   numTypes = 0;
-  subTypes = NULL;
+  subTypes = nullptr;
 }
 
 SSecurityVeNCrypt::~SSecurityVeNCrypt()
@@ -64,7 +61,7 @@ bool SSecurityVeNCrypt::processMsg()
 {
   rdr::InStream* is = sc->getInStream();
   rdr::OutStream* os = sc->getOutStream();
-  rdr::U8 i;
+  uint8_t i;
 
   /* VeNCrypt initialization */
 
@@ -93,7 +90,7 @@ bool SSecurityVeNCrypt::processMsg()
     haveRecvdMinorVersion = true;
 
     /* WORD value with major version in upper 8 bits and minor version in lower 8 bits */
-    U16 Version = (((U16)majorVersion) << 8) | ((U16)minorVersion);
+    uint16_t Version = (((uint16_t)majorVersion) << 8) | ((uint16_t)minorVersion);
 
     switch (Version) {
     case 0x0000: /* 0.0 - The client cannot support us! */
@@ -115,16 +112,16 @@ bool SSecurityVeNCrypt::processMsg()
   }
 
   /*
-   * send number of supported VeNCrypt authentication types (U8) followed
-   * by authentication types (U32s)
+   * send number of supported VeNCrypt authentication types (uint8_t)
+   * followed by authentication types (uint32_t:s)
    */
   if (!haveSentTypes) {
-    list<U32> listSubTypes;
+    list<uint32_t> listSubTypes;
 
     listSubTypes = security->GetEnabledExtSecTypes();
 
     numTypes = listSubTypes.size();
-    subTypes = new U32[numTypes];
+    subTypes = new uint32_t[numTypes];
 
     for (i = 0; i < numTypes; i++) {
       subTypes[i] = listSubTypes.front();
@@ -175,14 +172,14 @@ bool SSecurityVeNCrypt::processMsg()
 
 const char* SSecurityVeNCrypt::getUserName() const
 {
-  if (ssecurity == NULL)
-    return NULL;
+  if (ssecurity == nullptr)
+    return nullptr;
   return ssecurity->getUserName();
 }
 
-SConnection::AccessRights SSecurityVeNCrypt::getAccessRights() const
+AccessRights SSecurityVeNCrypt::getAccessRights() const
 {
-  if (ssecurity == NULL)
+  if (ssecurity == nullptr)
     return SSecurity::getAccessRights();
   return ssecurity->getAccessRights();
 }

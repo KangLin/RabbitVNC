@@ -20,10 +20,6 @@
  * USA.
  */
 
-#ifdef HAVE_CONFIG_H
-#include <config.h>
-#endif
-
 #ifndef HAVE_GNUTLS
 #error "This source should not be compiled without HAVE_GNUTLS defined"
 #endif
@@ -66,17 +62,14 @@ StringParameter SSecurityTLS::X509_KeyFile
 
 static LogWriter vlog("TLS");
 
-SSecurityTLS::SSecurityTLS(SConnection* sc, bool _anon)
-  : SSecurity(sc), session(NULL), anon_cred(NULL),
-    cert_cred(NULL), anon(_anon), tlsis(NULL), tlsos(NULL),
-    rawis(NULL), rawos(NULL)
+SSecurityTLS::SSecurityTLS(SConnection* sc_, bool _anon)
+  : SSecurity(sc_), session(nullptr), anon_cred(nullptr),
+    cert_cred(nullptr), anon(_anon), tlsis(nullptr), tlsos(nullptr),
+    rawis(nullptr), rawos(nullptr)
 {
 #if defined (SSECURITYTLS__USE_DEPRECATED_DH)
-  dh_params = NULL;
+  dh_params = nullptr;
 #endif
-
-  certfile = X509_CertFile.getData();
-  keyfile = X509_KeyFile.getData();
 
   if (gnutls_global_init() != GNUTLS_E_SUCCESS)
     throw AuthFailureException("gnutls_global_init failed");
@@ -102,32 +95,32 @@ void SSecurityTLS::shutdown()
 
   if (anon_cred) {
     gnutls_anon_free_server_credentials(anon_cred);
-    anon_cred = 0;
+    anon_cred = nullptr;
   }
 
   if (cert_cred) {
     gnutls_certificate_free_credentials(cert_cred);
-    cert_cred = 0;
+    cert_cred = nullptr;
   }
 
   if (rawis && rawos) {
     sc->setStreams(rawis, rawos);
-    rawis = NULL;
-    rawos = NULL;
+    rawis = nullptr;
+    rawos = nullptr;
   }
 
   if (tlsis) {
     delete tlsis;
-    tlsis = NULL;
+    tlsis = nullptr;
   }
   if (tlsos) {
     delete tlsos;
-    tlsos = NULL;
+    tlsos = nullptr;
   }
 
   if (session) {
     gnutls_deinit(session);
-    session = 0;
+    session = nullptr;
   }
 }
 
@@ -135,9 +128,6 @@ void SSecurityTLS::shutdown()
 SSecurityTLS::~SSecurityTLS()
 {
   shutdown();
-
-  delete[] keyfile;
-  delete[] certfile;
 
   gnutls_global_deinit();
 }
@@ -157,7 +147,7 @@ bool SSecurityTLS::processMsg()
       throw AuthFailureException("gnutls_set_default_priority failed");
 
     try {
-      setParams(session);
+      setParams();
     }
     catch(...) {
       os->writeU8(0);
@@ -196,7 +186,7 @@ bool SSecurityTLS::processMsg()
   return true;
 }
 
-void SSecurityTLS::setParams(gnutls_session_t session)
+void SSecurityTLS::setParams()
 {
   static const char kx_anon_priority[] = ":+ANON-ECDH:+ANON-DH";
 
@@ -209,7 +199,7 @@ void SSecurityTLS::setParams(gnutls_session_t session)
 
     prio = (char*)malloc(strlen(Security::GnuTLSPriority) +
                          strlen(kx_anon_priority) + 1);
-    if (prio == NULL)
+    if (prio == nullptr)
       throw AuthFailureException("Not enough memory for GnuTLS priority string");
 
     strcpy(prio, Security::GnuTLSPriority);
@@ -245,7 +235,7 @@ void SSecurityTLS::setParams(gnutls_session_t session)
 
     prio = (char*)malloc(strlen(gnutls_default_priority) +
                          strlen(kx_anon_priority) + 1);
-    if (prio == NULL)
+    if (prio == nullptr)
       throw AuthFailureException("Not enough memory for GnuTLS priority string");
 
     strcpy(prio, gnutls_default_priority);
@@ -293,7 +283,7 @@ void SSecurityTLS::setParams(gnutls_session_t session)
     gnutls_certificate_set_dh_params(cert_cred, dh_params);
 #endif
 
-    switch (gnutls_certificate_set_x509_key_file(cert_cred, certfile, keyfile, GNUTLS_X509_FMT_PEM)) {
+    switch (gnutls_certificate_set_x509_key_file(cert_cred, X509_CertFile, X509_KeyFile, GNUTLS_X509_FMT_PEM)) {
     case GNUTLS_E_SUCCESS:
       break;
     case GNUTLS_E_CERTIFICATE_KEY_MISMATCH:

@@ -16,8 +16,12 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
  * USA.
  */
+
 #include <stdio.h>
 #include <string.h>
+
+#include <algorithm>
+
 #include <rfb/Exception.h>
 #include <rfb/Security.h>
 #include <rfb/clipboardTypes.h>
@@ -30,6 +34,7 @@
 #include <rfb/encodings.h>
 #include <rfb/EncodeManager.h>
 #include <rfb/SSecurity.h>
+#include <rfb/util.h>
 
 #include <rfb/LogWriter.h>
 
@@ -37,24 +42,13 @@ using namespace rfb;
 
 static LogWriter vlog("SConnection");
 
-// AccessRights values
-const SConnection::AccessRights SConnection::AccessView           = 0x0001;
-const SConnection::AccessRights SConnection::AccessKeyEvents      = 0x0002;
-const SConnection::AccessRights SConnection::AccessPtrEvents      = 0x0004;
-const SConnection::AccessRights SConnection::AccessCutText        = 0x0008;
-const SConnection::AccessRights SConnection::AccessSetDesktopSize = 0x0010;
-const SConnection::AccessRights SConnection::AccessNonShared      = 0x0020;
-const SConnection::AccessRights SConnection::AccessDefault        = 0x03ff;
-const SConnection::AccessRights SConnection::AccessNoQuery        = 0x0400;
-const SConnection::AccessRights SConnection::AccessFull           = 0xffff;
-
-
-SConnection::SConnection()
-  : readyForSetColourMapEntries(false),
-    is(0), os(0), reader_(0), writer_(0), ssecurity(0),
+SConnection::SConnection(AccessRights accessRights_)
+  : readyForSetColourMapEntries(false), is(nullptr), os(nullptr),
+    reader_(nullptr), writer_(nullptr), ssecurity(nullptr),
     authFailureTimer(this, &SConnection::handleAuthFailureTimeout),
     state_(RFBSTATE_UNINITIALISED), preferredEncoding(encodingRaw),
-    clientClipboard(NULL), hasLocalClipboard(false),
+    accessRights(accessRights_), hasRemoteClipboard(false),
+    hasLocalClipboard(false),
     unsolicitedClipboardAttempt(false)
 {
   defaultMajorVersion = 3;
@@ -81,7 +75,7 @@ void SConnection::initialiseProtocol()
   char str[13];
 
   sprintf(str, "RFB %03d.%03d\n", defaultMajorVersion, defaultMinorVersion);
-  os->writeBytes(str, 12);
+  os->writeBytes((const uint8_t*)str, 12);
   os->flush();
 
   state_ = RFBSTATE_PROTOCOL_VERSION;
@@ -119,7 +113,7 @@ bool SConnection::processVersionMsg()
   if (!is->hasData(12))
     return false;
 
-  is->readBytes(verStr, 12);
+  is->readBytes((uint8_t*)verStr, 12);
   verStr[12] = '\0';
 
   if (sscanf(verStr, "RFB %03d.%03d\n",
@@ -155,8 +149,8 @@ bool SConnection::processVersionMsg()
 
   versionReceived();
 
-  std::list<rdr::U8> secTypes;
-  std::list<rdr::U8>::iterator i;
+  std::list<uint8_t> secTypes;
+  std::list<uint8_t>::iterator i;
   secTypes = security.GetEnabledSecTypes();
 
   if (client.isVersion(3,3)) {
@@ -210,13 +204,11 @@ bool SConnection::processSecurityTypeMsg()
 void SConnection::processSecurityType(int secType)
 {
   // Verify that the requested security type should be offered
-  std::list<rdr::U8> secTypes;
-  std::list<rdr::U8>::iterator i;
+  std::list<uint8_t> secTypes;
 
   secTypes = security.GetEnabledSecTypes();
-  for (i=secTypes.begin(); i!=secTypes.end(); i++)
-    if (*i == secType) break;
-  if (i == secTypes.end())
+  if (std::find(secTypes.begin(), secTypes.end(),
+                secType) == secTypes.end())
     throw Exception("Requested security type not available");
 
   vlog.info("Client requests security type %s(%d)",
@@ -241,13 +233,13 @@ bool SConnection::processSecurityMsg()
     state_ = RFBSTATE_SECURITY_FAILURE;
     // Introduce a slight delay of the authentication failure response
     // to make it difficult to brute force a password
-    authFailureMsg.replaceBuf(strDup(e.str()));
+    authFailureMsg = e.str();
     authFailureTimer.start(100);
     return true;
   }
 
   state_ = RFBSTATE_QUERYING;
-  setAccessRights(ssecurity->getAccessRights());
+  setAccessRights(accessRights & ssecurity->getAccessRights());
   queryConnection(ssecurity->getUserName());
 
   // If the connection got approved right away then we can continue
@@ -280,29 +272,27 @@ bool SConnection::processInitMsg()
   return reader_->readClientInit();
 }
 
-bool SConnection::handleAuthFailureTimeout(Timer* t)
+void SConnection::handleAuthFailureTimeout(Timer* /*t*/)
 {
   if (state_ != RFBSTATE_SECURITY_FAILURE) {
     close("SConnection::handleAuthFailureTimeout: invalid state");
-    return false;
+    return;
   }
 
   try {
     os->writeU32(secResultFailed);
     if (!client.beforeVersion(3,8)) { // 3.8 onwards have failure message
-      const char* reason = authFailureMsg.buf;
-      os->writeU32(strlen(reason));
-      os->writeBytes(reason, strlen(reason));
+      os->writeU32(authFailureMsg.size());
+      os->writeBytes((const uint8_t*)authFailureMsg.data(),
+                     authFailureMsg.size());
     }
     os->flush();
   } catch (rdr::Exception& e) {
     close(e.str());
-    return false;
+    return;
   }
 
-  close(authFailureMsg.buf);
-
-  return false;
+  close(authFailureMsg.c_str());
 }
 
 void SConnection::throwConnFailedException(const char* format, ...)
@@ -320,12 +310,12 @@ void SConnection::throwConnFailedException(const char* format, ...)
     if (client.majorVersion == 3 && client.minorVersion == 3) {
       os->writeU32(0);
       os->writeU32(strlen(str));
-      os->writeBytes(str, strlen(str));
+      os->writeBytes((const uint8_t*)str, strlen(str));
       os->flush();
     } else {
       os->writeU8(0);
       os->writeU32(strlen(str));
-      os->writeBytes(str, strlen(str));
+      os->writeBytes((const uint8_t*)str, strlen(str));
       os->flush();
     }
   }
@@ -341,10 +331,13 @@ void SConnection::setAccessRights(AccessRights ar)
 
 bool SConnection::accessCheck(AccessRights ar) const
 {
+  if (state_ < RFBSTATE_QUERYING)
+    throw Exception("SConnection::accessCheck: invalid state");
+
   return (accessRights & ar) == ar;
 }
 
-void SConnection::setEncodings(int nEncodings, const rdr::S32* encodings)
+void SConnection::setEncodings(int nEncodings, const int32_t* encodings)
 {
   int i;
 
@@ -359,7 +352,7 @@ void SConnection::setEncodings(int nEncodings, const rdr::S32* encodings)
   SMsgHandler::setEncodings(nEncodings, encodings);
 
   if (client.supportsEncoding(pseudoEncodingExtendedClipboard)) {
-    rdr::U32 sizes[] = { 0 };
+    uint32_t sizes[] = { 0 };
     writer()->writeClipboardCaps(rfb::clipboardUTF8 |
                                  rfb::clipboardRequest |
                                  rfb::clipboardPeek |
@@ -373,15 +366,13 @@ void SConnection::clientCutText(const char* str)
 {
   hasLocalClipboard = false;
 
-  strFree(clientClipboard);
-  clientClipboard = NULL;
-
-  clientClipboard = latin1ToUTF8(str);
+  clientClipboard = str;
+  hasRemoteClipboard = true;
 
   handleClipboardAnnounce(true);
 }
 
-void SConnection::handleClipboardRequest(rdr::U32 flags)
+void SConnection::handleClipboardRequest(uint32_t flags)
 {
   if (!(flags & rfb::clipboardUTF8)) {
     vlog.debug("Ignoring clipboard request for unsupported formats 0x%x", flags);
@@ -394,16 +385,15 @@ void SConnection::handleClipboardRequest(rdr::U32 flags)
   handleClipboardRequest();
 }
 
-void SConnection::handleClipboardPeek(rdr::U32 flags)
+void SConnection::handleClipboardPeek()
 {
   if (client.clipboardFlags() & rfb::clipboardNotify)
     writer()->writeClipboardNotify(hasLocalClipboard ? rfb::clipboardUTF8 : 0);
 }
 
-void SConnection::handleClipboardNotify(rdr::U32 flags)
+void SConnection::handleClipboardNotify(uint32_t flags)
 {
-  strFree(clientClipboard);
-  clientClipboard = NULL;
+  hasRemoteClipboard = false;
 
   if (flags & rfb::clipboardUTF8) {
     hasLocalClipboard = false;
@@ -413,22 +403,25 @@ void SConnection::handleClipboardNotify(rdr::U32 flags)
   }
 }
 
-void SConnection::handleClipboardProvide(rdr::U32 flags,
+void SConnection::handleClipboardProvide(uint32_t flags,
                                          const size_t* lengths,
-                                         const rdr::U8* const* data)
+                                         const uint8_t* const* data)
 {
   if (!(flags & rfb::clipboardUTF8)) {
     vlog.debug("Ignoring clipboard provide with unsupported formats 0x%x", flags);
     return;
   }
 
-  strFree(clientClipboard);
-  clientClipboard = NULL;
-
+  // FIXME: This conversion magic should be in SMsgReader
+  if (!isValidUTF8((const char*)data[0], lengths[0])) {
+    vlog.error("Invalid UTF-8 sequence in clipboard - ignoring");
+    return;
+  }
   clientClipboard = convertLF((const char*)data[0], lengths[0]);
+  hasRemoteClipboard = true;
 
   // FIXME: Should probably verify that this data was actually requested
-  handleClipboardData(clientClipboard);
+  handleClipboardData(clientClipboard.c_str());
 }
 
 void SConnection::supportsQEMUKeyEvent()
@@ -444,7 +437,7 @@ void SConnection::authSuccess()
 {
 }
 
-void SConnection::queryConnection(const char* userName)
+void SConnection::queryConnection(const char* /*userName*/)
 {
   approveConnection(true);
 }
@@ -463,7 +456,7 @@ void SConnection::approveConnection(bool accept, const char* reason)
         if (!reason)
           reason = "Authentication failure";
         os->writeU32(strlen(reason));
-        os->writeBytes(reason, strlen(reason));
+        os->writeBytes((const uint8_t*)reason, strlen(reason));
       }
     }
     os->flush();
@@ -483,14 +476,14 @@ void SConnection::approveConnection(bool accept, const char* reason)
   }
 }
 
-void SConnection::clientInit(bool shared)
+void SConnection::clientInit(bool /*shared*/)
 {
   writer_->writeServerInit(client.width(), client.height(),
                            client.pf(), client.name());
   state_ = RFBSTATE_NORMAL;
 }
 
-void SConnection::close(const char* reason)
+void SConnection::close(const char* /*reason*/)
 {
   state_ = RFBSTATE_CLOSING;
   cleanup();
@@ -504,7 +497,8 @@ void SConnection::setPixelFormat(const PixelFormat& pf)
     writeFakeColourMap();
 }
 
-void SConnection::framebufferUpdateRequest(const Rect& r, bool incremental)
+void SConnection::framebufferUpdateRequest(const Rect& /*r*/,
+                                           bool /*incremental*/)
 {
   if (!readyForSetColourMapEntries) {
     readyForSetColourMapEntries = true;
@@ -514,7 +508,8 @@ void SConnection::framebufferUpdateRequest(const Rect& r, bool incremental)
   }
 }
 
-void SConnection::fence(rdr::U32 flags, unsigned len, const char data[])
+void SConnection::fence(uint32_t flags, unsigned len,
+                        const uint8_t data[])
 {
   if (!(flags & fenceFlagRequest))
     return;
@@ -525,8 +520,9 @@ void SConnection::fence(rdr::U32 flags, unsigned len, const char data[])
   writer()->writeFence(flags, len, data);
 }
 
-void SConnection::enableContinuousUpdates(bool enable,
-                                          int x, int y, int w, int h)
+void SConnection::enableContinuousUpdates(bool /*enable*/,
+                                          int /*x*/, int /*y*/,
+                                          int /*w*/, int /*h*/)
 {
 }
 
@@ -534,18 +530,18 @@ void SConnection::handleClipboardRequest()
 {
 }
 
-void SConnection::handleClipboardAnnounce(bool available)
+void SConnection::handleClipboardAnnounce(bool /*available*/)
 {
 }
 
-void SConnection::handleClipboardData(const char* data)
+void SConnection::handleClipboardData(const char* /*data*/)
 {
 }
 
 void SConnection::requestClipboard()
 {
-  if (clientClipboard != NULL) {
-    handleClipboardData(clientClipboard);
+  if (hasRemoteClipboard) {
+    handleClipboardData(clientClipboard.c_str());
     return;
   }
 
@@ -584,9 +580,10 @@ void SConnection::sendClipboardData(const char* data)
 {
   if (client.supportsEncoding(pseudoEncodingExtendedClipboard) &&
       (client.clipboardFlags() & rfb::clipboardProvide)) {
-    CharArray filtered(convertCRLF(data));
-    size_t sizes[1] = { strlen(filtered.buf) + 1 };
-    const rdr::U8* data[1] = { (const rdr::U8*)filtered.buf };
+    // FIXME: This conversion magic should be in SMsgWriter
+    std::string filtered(convertCRLF(data));
+    size_t sizes[1] = { filtered.size() + 1 };
+    const uint8_t* datas[1] = { (const uint8_t*)filtered.c_str() };
 
     if (unsolicitedClipboardAttempt) {
       unsolicitedClipboardAttempt = false;
@@ -598,30 +595,26 @@ void SConnection::sendClipboardData(const char* data)
       }
     }
 
-    writer()->writeClipboardProvide(rfb::clipboardUTF8, sizes, data);
+    writer()->writeClipboardProvide(rfb::clipboardUTF8, sizes, datas);
   } else {
-    CharArray latin1(utf8ToLatin1(data));
-
-    writer()->writeServerCutText(latin1.buf);
+    writer()->writeServerCutText(data);
   }
 }
 
 void SConnection::cleanup()
 {
   delete ssecurity;
-  ssecurity = NULL;
+  ssecurity = nullptr;
   delete reader_;
-  reader_ = NULL;
+  reader_ = nullptr;
   delete writer_;
-  writer_ = NULL;
-  strFree(clientClipboard);
-  clientClipboard = NULL;
+  writer_ = nullptr;
 }
 
 void SConnection::writeFakeColourMap(void)
 {
   int i;
-  rdr::U16 red[256], green[256], blue[256];
+  uint16_t red[256], green[256], blue[256];
 
   for (i = 0;i < 256;i++)
     client.pf().rgbFromPixel(i, &red[i], &green[i], &blue[i]);

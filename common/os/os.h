@@ -1,4 +1,5 @@
 /* Copyright (C) 2010 TightVNC Team.  All Rights Reserved.
+ * Copyright 2021-2023 Pierre Ossman for Cendio AB
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,38 +30,65 @@
 
 #ifdef __GNUC__
 #include <sys/time.h>
+#include <sys/stat.h>
 #endif
 
 #ifndef PATH_MAX
 #define PATH_MAX        4096
 #endif
 
-/*
- * Get VNC home directory ($HOME/.vnc or %APPDATA%/vnc/).
- * If HOME environment variable is set then it is used.
- * Otherwise home directory is obtained via getpwuid function.
- *
- * Note for Windows:
- * This functions returns array of TCHARs, not array of chars.
- *
- * Returns:
- * 0 - Success
- * -1 - Failure
- */
-int getvnchomedir(char **dirp);
+#if defined(_MSC_VER)
+    #define strcasecmp _stricmp
+    #define strncasecmp _strnicmp
+#endif
 
-/*
- * Get user home directory.
- * If HOME environment variable is set then it is used.
- * Otherwise home directory is obtained via getpwuid function.
- *
- * Note for Windows:
- * This functions returns array of TCHARs, not array of chars.
- *
- * Returns:
- * 0 - Success
- * -1 - Failure
- */
-int getuserhomedir(char **dirp);
+namespace os {
+
+  /*
+   * Get user home directory.
+   * If HOME environment variable is set then it is used.
+   * Otherwise home directory is obtained via getpwuid function.
+   *
+   * Returns NULL on failure.
+   */
+  const char* getuserhomedir();
+
+  /*
+   * Get VNC config directory. On Unix-like systems, this is either:
+   * - $XDG_CONFIG_HOME/tigervnc
+   * - $HOME/.config/tigervnc
+   * On Windows, this is simply %APPDATA%/TigerVNC/.
+   *
+   * Returns NULL on failure.
+   */
+  const char* getvncconfigdir();
+  /*
+   * Get VNC data directory used for X.509 known hosts.
+   * On Unix-like systems, this is either:
+   * - $XDG_DATA_HOME/tigervnc
+   * - $HOME/.local/share/tigervnc
+   * On Windows, this is simply %APPDATA%/TigerVNC/.
+   *
+   * Returns NULL on failure.
+   */
+  const char* getvncdatadir();
+
+  /*
+   * Get VNC state (logs) directory. On Unix-like systems, this is either:
+   * - $XDG_STATE_HOME/tigervnc
+   * - $HOME/.local/state/tigervnc
+   * On Windows, this is simply %APPDATA%/TigerVNC/.
+   *
+   * Returns NULL on failure.
+   */
+  const char* getvncstatedir();
+#ifdef __GNUC__
+  /*
+   * Create directory recursively. Useful to create the nested directory
+   * structures needed for the above directories.
+   */
+  int mkdir_p(const char *path, mode_t mode);
+#endif
+}
 
 #endif /* OS_OS_H */

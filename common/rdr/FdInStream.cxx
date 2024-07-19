@@ -25,14 +25,15 @@
 #include <errno.h>
 #include <os/os.h>
 #ifdef _WIN32
+#include <winsock2.h>
+#define errorNumber WSAGetLastError()
 #define close closesocket
-#undef errno
-#define errno WSAGetLastError()
 #include <os/winerrno.h>
 #else
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#define errorNumber errno
 #endif
 
 /* Old systems have select() in sys/time.h */
@@ -56,9 +57,9 @@ FdInStream::~FdInStream()
 }
 
 
-bool FdInStream::fillBuffer(size_t maxSize)
+bool FdInStream::fillBuffer()
 {
-  size_t n = readFd((U8*)end, maxSize);
+  size_t n = readFd((uint8_t*)end, availSpace());
   if (n == 0)
     return false;
   end += n;
@@ -76,7 +77,7 @@ bool FdInStream::fillBuffer(size_t maxSize)
 // returning EINTR.
 //
 
-size_t FdInStream::readFd(void* buf, size_t len)
+size_t FdInStream::readFd(uint8_t* buf, size_t len)
 {
   int n;
   do {
@@ -87,21 +88,21 @@ size_t FdInStream::readFd(void* buf, size_t len)
 
     FD_ZERO(&fds);
     FD_SET(fd, &fds);
-    n = select(fd+1, &fds, 0, 0, &tv);
-  } while (n < 0 && errno == EINTR);
+    n = select(fd+1, &fds, nullptr, nullptr, &tv);
+  } while (n < 0 && errorNumber == EINTR);
 
   if (n < 0)
-    throw SystemException("select",errno);
+    throw SystemException("select", errorNumber);
 
   if (n == 0)
     return 0;
 
   do {
     n = ::recv(fd, (char*)buf, len, 0);
-  } while (n < 0 && errno == EINTR);
+  } while (n < 0 && errorNumber == EINTR);
 
   if (n < 0)
-    throw SystemException("read",errno);
+    throw SystemException("read", errorNumber);
   if (n == 0)
     throw EndOfStream();
 

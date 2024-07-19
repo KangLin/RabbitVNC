@@ -27,8 +27,7 @@
 #include <errno.h>
 #ifdef _WIN32
 #include <winsock2.h>
-#undef errno
-#define errno WSAGetLastError()
+#define errorNumber WSAGetLastError()
 #include <os/winerrno.h>
 #else
 #include <sys/types.h>
@@ -37,6 +36,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#define errorNumber errno
 #endif
 
 /* Old systems have select() in sys/time.h */
@@ -53,9 +53,14 @@
 using namespace rdr;
 
 FdOutStream::FdOutStream(int fd_)
-  : fd(fd_)
+#ifdef TCP_CORK
+  : BufferedOutStream(false),
+#else
+  : BufferedOutStream(true),
+#endif
+  fd(fd_)
 {
-  gettimeofday(&lastWrite, NULL);
+  gettimeofday(&lastWrite, nullptr);
 }
 
 FdOutStream::~FdOutStream()
@@ -79,7 +84,7 @@ void FdOutStream::cork(bool enable)
 
 bool FdOutStream::flushBuffer()
 {
-  size_t n = writeFd((const void*) sentUpTo, ptr - sentUpTo);
+  size_t n = writeFd(sentUpTo, ptr - sentUpTo);
   if (n == 0)
     return false;
 
@@ -97,7 +102,7 @@ bool FdOutStream::flushBuffer()
 // returning EINTR.
 //
 
-size_t FdOutStream::writeFd(const void* data, size_t length)
+size_t FdOutStream::writeFd(const uint8_t* data, size_t length)
 {
   int n;
 
@@ -109,11 +114,11 @@ size_t FdOutStream::writeFd(const void* data, size_t length)
 
     FD_ZERO(&fds);
     FD_SET(fd, &fds);
-    n = select(fd+1, 0, &fds, 0, &tv);
-  } while (n < 0 && errno == EINTR);
+    n = select(fd+1, nullptr, &fds, nullptr, &tv);
+  } while (n < 0 && errorNumber == EINTR);
 
   if (n < 0)
-    throw SystemException("select", errno);
+    throw SystemException("select", errorNumber);
 
   if (n == 0)
     return 0;
@@ -127,12 +132,12 @@ size_t FdOutStream::writeFd(const void* data, size_t length)
 #else
     n = ::send(fd, (const char*)data, length, MSG_DONTWAIT);
 #endif
-  } while (n < 0 && (errno == EINTR));
+  } while (n < 0 && (errorNumber == EINTR));
 
   if (n < 0)
-    throw SystemException("write", errno);
+    throw SystemException("write", errorNumber);
 
-  gettimeofday(&lastWrite, NULL);
+  gettimeofday(&lastWrite, nullptr);
 
   return n;
 }

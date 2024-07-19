@@ -21,6 +21,7 @@
 
 #include <stdio.h>
 #include <os/os.h>
+#include <algorithm>
 
 #include <rfb/Timer.h>
 #include <rfb/util.h>
@@ -48,7 +49,7 @@ inline static timeval addMillis(timeval inTime, int millis) {
 }
 
 inline static int diffTimeMillis(timeval later, timeval earlier) {
-  return ((later.tv_sec - earlier.tv_sec) * 1000) + ((later.tv_usec - earlier.tv_usec) / 1000);
+  return ((later.tv_sec - earlier.tv_sec) * 1000) + ((later.tv_usec - earlier.tv_usec + 999) / 1000);
 }
 
 std::list<Timer*> Timer::pending;
@@ -57,44 +58,33 @@ int Timer::checkTimeouts() {
   timeval start;
 
   if (pending.empty())
-    return 0;
+    return -1;
 
-  gettimeofday(&start, 0);
+  gettimeofday(&start, nullptr);
   while (pending.front()->isBefore(start)) {
     Timer* timer;
-    timeval before;
 
     timer = pending.front();
     pending.pop_front();
 
-    gettimeofday(&before, 0);
-    if (timer->cb->handleTimeout(timer)) {
-      timeval now;
+    timer->lastDueTime = timer->dueTime;
+    timer->cb->handleTimeout(timer);
 
-      gettimeofday(&now, 0);
-
-      timer->dueTime = addMillis(timer->dueTime, timer->timeoutMs);
-      if (timer->isBefore(now)) {
-        // Time has jumped forwards, or we're not getting enough
-        // CPU time for the timers
-
-        timer->dueTime = addMillis(before, timer->timeoutMs);
-        if (timer->isBefore(now))
-          timer->dueTime = now;
-      }
-
-      insertTimer(timer);
-    } else if (pending.empty()) {
-      return 0;
-    }
+    if (pending.empty())
+      return -1;
   }
   return getNextTimeout();
 }
 
 int Timer::getNextTimeout() {
   timeval now;
-  gettimeofday(&now, 0);
-  int toWait = __rfbmax(1, pending.front()->getRemainingMs());
+  gettimeofday(&now, nullptr);
+
+  if (pending.empty())
+    return -1;
+
+  int toWait = pending.front()->getRemainingMs();
+
   if (toWait > pending.front()->timeoutMs) {
     if (toWait - pending.front()->timeoutMs < 1000) {
       vlog.info("gettimeofday is broken...");
@@ -103,8 +93,9 @@ int Timer::getNextTimeout() {
     // Time has jumped backwards!
     vlog.info("time has moved backwards!");
     pending.front()->dueTime = now;
-    toWait = 1;
+    toWait = 0;
   }
+
   return toWait;
 }
 
@@ -121,13 +112,36 @@ void Timer::insertTimer(Timer* t) {
 
 void Timer::start(int timeoutMs_) {
   timeval now;
-  gettimeofday(&now, 0);
+  gettimeofday(&now, nullptr);
   stop();
   timeoutMs = timeoutMs_;
-  // The rest of the code assumes non-zero timeout
-  if (timeoutMs <= 0)
-    timeoutMs = 1;
   dueTime = addMillis(now, timeoutMs);
+  insertTimer(this);
+}
+
+void Timer::repeat(int timeoutMs_) {
+  timeval now;
+
+  gettimeofday(&now, nullptr);
+
+  if (isStarted()) {
+    vlog.error("Incorrectly repeating already running timer");
+    stop();
+  }
+
+  if (msBetween(&lastDueTime, &dueTime) != 0)
+    vlog.error("Timer incorrectly modified whilst repeating");
+
+  if (timeoutMs_ != -1)
+    timeoutMs = timeoutMs_;
+
+  dueTime = addMillis(lastDueTime, timeoutMs);
+  if (isBefore(now)) {
+    // Time has jumped forwards, or we're not getting enough
+    // CPU time for the timers
+    dueTime = now;
+  }
+
   insertTimer(this);
 }
 
@@ -136,12 +150,8 @@ void Timer::stop() {
 }
 
 bool Timer::isStarted() {
-  std::list<Timer*>::iterator i;
-  for (i=pending.begin(); i!=pending.end(); i++) {
-    if (*i == this)
-      return true;
-  }
-  return false;
+  return std::find(pending.begin(), pending.end(),
+                   this) != pending.end();
 }
 
 int Timer::getTimeoutMs() {
@@ -150,7 +160,7 @@ int Timer::getTimeoutMs() {
 
 int Timer::getRemainingMs() {
   timeval now;
-  gettimeofday(&now, 0);
+  gettimeofday(&now, nullptr);
   return __rfbmax(0, diffTimeMillis(dueTime, now));
 }
 

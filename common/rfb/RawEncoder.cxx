@@ -24,8 +24,8 @@
 
 using namespace rfb;
 
-RawEncoder::RawEncoder(SConnection* conn) :
-  Encoder(conn, encodingRaw, EncoderPlain)
+RawEncoder::RawEncoder(SConnection* conn_) :
+  Encoder(conn_, encodingRaw, EncoderPlain)
 {
 }
 
@@ -39,9 +39,10 @@ bool RawEncoder::isSupported()
   return true;
 }
 
-void RawEncoder::writeRect(const PixelBuffer* pb, const Palette& palette)
+void RawEncoder::writeRect(const PixelBuffer* pb,
+                           const Palette& /*palette*/)
 {
-  const rdr::U8* buffer;
+  const uint8_t* buffer;
   int stride;
 
   rdr::OutStream* os;
@@ -62,7 +63,7 @@ void RawEncoder::writeRect(const PixelBuffer* pb, const Palette& palette)
 
 void RawEncoder::writeSolidRect(int width, int height,
                                 const PixelFormat& pf,
-                                const rdr::U8* colour)
+                                const uint8_t* colour)
 {
   rdr::OutStream* os;
   int pixels, pixel_size;

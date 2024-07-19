@@ -35,6 +35,7 @@ namespace rfb {
 
   class VNCSConnectionST;
   class ComparingUpdateTracker;
+  class ListConnInfo;
   class PixelBuffer;
   class KeyRemapper;
 
@@ -48,59 +49,59 @@ namespace rfb {
     virtual ~VNCServerST();
 
 
-    // Methods overridden from SocketServer
+    // Methods overridden from VNCServer
 
     // addSocket
     //   Causes the server to allocate an RFB-protocol management
     //   structure for the socket & initialise it.
-    virtual void addSocket(network::Socket* sock, bool outgoing=false);
+    void addSocket(network::Socket* sock, bool outgoing=false,
+                   AccessRights ar=AccessDefault) override;
 
     // removeSocket
     //   Clean up any resources associated with the Socket
-    virtual void removeSocket(network::Socket* sock);
+    void removeSocket(network::Socket* sock) override;
 
     // getSockets() gets a list of sockets.  This can be used to generate an
     // fd_set for calling select().
-    virtual void getSockets(std::list<network::Socket*>* sockets);
+    void getSockets(std::list<network::Socket*>* sockets) override;
 
     // processSocketReadEvent
     //   Read more RFB data from the Socket.  If an error occurs during
     //   processing then shutdown() is called on the Socket, causing
     //   removeSocket() to be called by the caller at a later time.
-    virtual void processSocketReadEvent(network::Socket* sock);
+    void processSocketReadEvent(network::Socket* sock) override;
 
     // processSocketWriteEvent
     //   Flush pending data from the Socket on to the network.
-    virtual void processSocketWriteEvent(network::Socket* sock);
+    void processSocketWriteEvent(network::Socket* sock) override;
 
+    void blockUpdates() override;
+    void unblockUpdates() override;
+    uint64_t getMsc() override;
+    void queueMsc(uint64_t target) override;
+    void setPixelBuffer(PixelBuffer* pb, const ScreenSet& layout) override;
+    void setPixelBuffer(PixelBuffer* pb) override;
+    void setScreenLayout(const ScreenSet& layout) override;
+    const PixelBuffer* getPixelBuffer() const override { return pb; }
 
-    // Methods overridden from VNCServer
+    void requestClipboard() override;
+    void announceClipboard(bool available) override;
+    void sendClipboardData(const char* data) override;
 
-    virtual void blockUpdates();
-    virtual void unblockUpdates();
-    virtual void setPixelBuffer(PixelBuffer* pb, const ScreenSet& layout);
-    virtual void setPixelBuffer(PixelBuffer* pb);
-    virtual void setScreenLayout(const ScreenSet& layout);
-    virtual const PixelBuffer* getPixelBuffer() const { return pb; }
+    void approveConnection(network::Socket* sock, bool accept,
+                           const char* reason) override;
+    void closeClients(const char* reason) override {closeClients(reason, nullptr);}
+    SConnection* getConnection(network::Socket* sock) override;
 
-    virtual void requestClipboard();
-    virtual void announceClipboard(bool available);
-    virtual void sendClipboardData(const char* data);
+    void add_changed(const Region &region) override;
+    void add_copied(const Region &dest, const Point &delta) override;
+    void setCursor(int width, int height, const Point& hotspot,
+                   const uint8_t* data) override;
+    void setCursorPos(const Point& p, bool warped) override;
+    void setName(const char* name_) override;
+    void setLEDState(unsigned state) override;
 
-    virtual void approveConnection(network::Socket* sock, bool accept,
-                                   const char* reason);
-    virtual void closeClients(const char* reason) {closeClients(reason, 0);}
-    virtual SConnection* getConnection(network::Socket* sock);
-
-    virtual void add_changed(const Region &region);
-    virtual void add_copied(const Region &dest, const Point &delta);
-    virtual void setCursor(int width, int height, const Point& hotspot,
-                           const rdr::U8* data);
-    virtual void setCursorPos(const Point& p, bool warped);
-    virtual void setName(const char* name_);
-    virtual void setLEDState(unsigned state);
-
-    virtual void bell();
+    void bell() override;
 
     // VNCServerST-only methods
 
@@ -109,11 +110,11 @@ namespace rfb {
     const ScreenSet& getScreenLayout() const { return screenLayout; }
     const Cursor* getCursor() const { return cursor; }
     const Point& getCursorPos() const { return cursorPos; }
-    const char* getName() const { return name.buf; }
+    const char* getName() const { return name.c_str(); }
     unsigned getLEDState() const { return ledState; }
 
     // Event handlers
-    void keyEvent(rdr::U32 keysym, rdr::U32 keycode, bool down);
+    void keyEvent(uint32_t keysym, uint32_t keycode, bool down);
     void pointerEvent(VNCSConnectionST* client, const Point& pos, int buttonMask);
 
     void handleClipboardRequest(VNCSConnectionST* client);
@@ -152,7 +153,7 @@ namespace rfb {
   protected:
 
     // Timer callbacks
-    virtual bool handleTimeout(Timer* t);
+    void handleTimeout(Timer* t) override;
 
     // - Internal methods
 
@@ -180,13 +181,15 @@ namespace rfb {
     ScreenSet screenLayout;
     unsigned int ledState;
 
-    CharArray name;
+    std::string name;
 
     std::list<VNCSConnectionST*> clients;
     VNCSConnectionST* pointerClient;
     VNCSConnectionST* clipboardClient;
     std::list<VNCSConnectionST*> clipboardRequestors;
     std::list<network::Socket*> closingSockets;
+
+    time_t pointerClientTime;
 
     ComparingUpdateTracker* comparer;
 
@@ -201,6 +204,7 @@ namespace rfb {
     Timer disconnectTimer;
     Timer connectTimer;
 
+    uint64_t msc, queuedMsc;
     Timer frameTimer;
   };
 

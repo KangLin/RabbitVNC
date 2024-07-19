@@ -20,9 +20,9 @@
 
 using namespace rfb;
 
-SSecurityStack::SSecurityStack(SConnection* sc, int Type,
+SSecurityStack::SSecurityStack(SConnection* sc_, int Type,
                                SSecurity* s0, SSecurity* s1)
-  : SSecurity(sc), state(0), state0(s0), state1(s1), type(Type)
+  : SSecurity(sc_), state(0), state0(s0), state1(s1), type(Type)
 {
 }
 
@@ -57,7 +57,7 @@ bool SSecurityStack::processMsg()
 
 const char* SSecurityStack::getUserName() const
 {
-  const char* c = 0;
+  const char* c = nullptr;
 
   if (state1 && !c)
     c = state1->getUserName();
@@ -67,14 +67,14 @@ const char* SSecurityStack::getUserName() const
   return c;
 }
 
-SConnection::AccessRights SSecurityStack::getAccessRights() const
+AccessRights SSecurityStack::getAccessRights() const
 {
-  SConnection::AccessRights accessRights;
+  AccessRights accessRights;
 
   if (!state0 && !state1)
     return SSecurity::getAccessRights();
 
-  accessRights = SConnection::AccessFull;
+  accessRights = AccessFull;
 
   if (state0)
     accessRights &= state0->getAccessRights();

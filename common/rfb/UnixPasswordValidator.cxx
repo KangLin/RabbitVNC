@@ -37,10 +37,9 @@ AliasParameter pam_service("pam_service", "Alias for PAMService",
 int do_pam_auth(const char *service, const char *username,
 	        const char *password);
 
-bool UnixPasswordValidator::validateInternal(SConnection * sc,
+bool UnixPasswordValidator::validateInternal(SConnection * /*sc*/,
 					     const char *username,
 					     const char *password)
 {
-  CharArray service(strDup(pamService.getData()));
-  return do_pam_auth(service.buf, username, password);
+  return do_pam_auth(pamService, username, password);
 }

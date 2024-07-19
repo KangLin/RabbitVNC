@@ -151,15 +151,16 @@ JpegCompressor::~JpegCompressor(void)
   delete cinfo;
 }
 
-void JpegCompressor::compress(const rdr::U8 *buf, int stride, const Rect& r,
-  const PixelFormat& pf, int quality, int subsamp)
+void JpegCompressor::compress(const uint8_t *buf, volatile int stride,
+                              const Rect& r, const PixelFormat& pf,
+                              int quality, int subsamp)
 {
   int w = r.width();
   int h = r.height();
   int pixelsize;
-  rdr::U8 *srcBuf = NULL;
-  bool srcBufIsTemp = false;
-  JSAMPROW *rowPointer = NULL;
+  uint8_t * volatile srcBuf = nullptr;
+  volatile bool srcBufIsTemp = false;
+  JSAMPROW * volatile rowPointer = nullptr;
 
   if(setjmp(err->jmpBuffer)) {
     // this will execute if libjpeg has an error
@@ -177,17 +178,17 @@ void JpegCompressor::compress(const rdr::U8 *buf, int stride, const Rect& r,
 #ifdef JCS_EXTENSIONS
   // Try to have libjpeg output directly to our native format
   // libjpeg can only handle some "standard" formats
-  if (pfRGBX.equal(pf))
+  if (pfRGBX == pf)
     cinfo->in_color_space = JCS_EXT_RGBX;
-  else if (pfBGRX.equal(pf))
+  else if (pfBGRX == pf)
     cinfo->in_color_space = JCS_EXT_BGRX;
-  else if (pfXRGB.equal(pf))
+  else if (pfXRGB == pf)
     cinfo->in_color_space = JCS_EXT_XRGB;
-  else if (pfXBGR.equal(pf))
+  else if (pfXBGR == pf)
     cinfo->in_color_space = JCS_EXT_XBGR;
 
   if (cinfo->in_color_space != JCS_RGB) {
-    srcBuf = (rdr::U8 *)buf;
+    srcBuf = (uint8_t *)buf;
     pixelsize = 4;
   }
 #endif
@@ -196,9 +197,9 @@ void JpegCompressor::compress(const rdr::U8 *buf, int stride, const Rect& r,
     stride = w;
 
   if (cinfo->in_color_space == JCS_RGB) {
-    srcBuf = new rdr::U8[w * h * pixelsize];
+    srcBuf = new uint8_t[w * h * pixelsize];
     srcBufIsTemp = true;
-    pf.rgbFromBuffer(srcBuf, (const rdr::U8 *)buf, w, stride, h);
+    pf.rgbFromBuffer(srcBuf, (const uint8_t *)buf, w, stride, h);
     stride = w;
   }
 
@@ -228,6 +229,7 @@ void JpegCompressor::compress(const rdr::U8 *buf, int stride, const Rect& r,
     break;
   case subsampleGray:
     jpeg_set_colorspace(cinfo, JCS_GRAYSCALE);
+    // fall through
   default:
     cinfo->comp_info[0].h_samp_factor = 1;
     cinfo->comp_info[0].v_samp_factor = 1;
@@ -248,7 +250,7 @@ void JpegCompressor::compress(const rdr::U8 *buf, int stride, const Rect& r,
   delete[] rowPointer;
 }
 
-void JpegCompressor::writeBytes(const void* data, int length)
+void JpegCompressor::writeBytes(const uint8_t* /*data*/, int /*length*/)
 {
   throw rdr::Exception("writeBytes() is not valid with a JpegCompressor instance.  Use compress() instead.");
 }

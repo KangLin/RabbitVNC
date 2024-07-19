@@ -40,13 +40,14 @@ namespace rfb {
   class VNCSConnectionST : private SConnection,
                            public Timer::Callback {
   public:
-    VNCSConnectionST(VNCServerST* server_, network::Socket* s, bool reverse);
+    VNCSConnectionST(VNCServerST* server_, network::Socket* s, bool reverse,
+                     AccessRights ar);
     virtual ~VNCSConnectionST();
 
     // SConnection methods
 
-    virtual bool accessCheck(AccessRights ar) const;
-    virtual void close(const char* reason);
+    bool accessCheck(AccessRights ar) const override;
+    void close(const char* reason) override;
 
     using SConnection::authenticated;
 
@@ -71,7 +72,7 @@ namespace rfb {
 
     // Wrappers to make these methods "safe" for VNCServerST.
     void writeFramebufferUpdateOrClose();
-    void screenLayoutChangeOrClose(rdr::U16 reason);
+    void screenLayoutChangeOrClose(uint16_t reason);
     void setCursorOrClose();
     void bellOrClose();
     void setDesktopNameOrClose(const char *name);
@@ -112,35 +113,37 @@ namespace rfb {
       updates.add_copied(dest, delta);
     }
 
-    const char* getPeerEndpoint() const {return peerEndpoint.buf;}
+    const char* getPeerEndpoint() const {return peerEndpoint.c_str();}
 
   private:
     // SConnection callbacks
 
-    // These methods are invoked as callbacks from processMsg()
-
-    virtual void authSuccess();
-    virtual void queryConnection(const char* userName);
-    virtual void clientInit(bool shared);
-    virtual void setPixelFormat(const PixelFormat& pf);
-    virtual void pointerEvent(const Point& pos, int buttonMask);
-    virtual void keyEvent(rdr::U32 keysym, rdr::U32 keycode, bool down);
-    virtual void framebufferUpdateRequest(const Rect& r, bool incremental);
-    virtual void setDesktopSize(int fb_width, int fb_height,
-                                const ScreenSet& layout);
-    virtual void fence(rdr::U32 flags, unsigned len, const char data[]);
-    virtual void enableContinuousUpdates(bool enable,
-                                         int x, int y, int w, int h);
-    virtual void handleClipboardRequest();
-    virtual void handleClipboardAnnounce(bool available);
-    virtual void handleClipboardData(const char* data);
-    virtual void supportsLocalCursor();
-    virtual void supportsFence();
-    virtual void supportsContinuousUpdates();
-    virtual void supportsLEDState();
+    // These methods are invoked as callbacks from processMsg(
+    void authSuccess() override;
+    void queryConnection(const char* userName) override;
+    void clientInit(bool shared) override;
+    void setPixelFormat(const PixelFormat& pf) override;
+    void pointerEvent(const Point& pos, int buttonMask) override;
+    void keyEvent(uint32_t keysym, uint32_t keycode,
+                  bool down) override;
+    void framebufferUpdateRequest(const Rect& r,
+                                  bool incremental) override;
+    void setDesktopSize(int fb_width, int fb_height,
+                        const ScreenSet& layout) override;
+    void fence(uint32_t flags, unsigned len,
+               const uint8_t data[]) override;
+    void enableContinuousUpdates(bool enable,
+                                 int x, int y, int w, int h) override;
+    void handleClipboardRequest() override;
+    void handleClipboardAnnounce(bool available) override;
+    void handleClipboardData(const char* data) override;
+    void supportsLocalCursor() override;
+    void supportsFence() override;
+    void supportsContinuousUpdates() override;
+    void supportsLEDState() override;
 
     // Timer callbacks
-    virtual bool handleTimeout(Timer* t);
+    void handleTimeout(Timer* t) override;
 
     // Internal methods
 
@@ -158,7 +161,7 @@ namespace rfb {
     void writeDataUpdate();
     void writeLosslessRefresh();
 
-    void screenLayoutChange(rdr::U16 reason);
+    void screenLayoutChange(uint16_t reason);
     void setCursor();
     void setCursorPos();
     void setDesktopName(const char *name);
@@ -166,15 +169,15 @@ namespace rfb {
 
   private:
     network::Socket* sock;
-    CharArray peerEndpoint;
+    std::string peerEndpoint;
     bool reverseConnection;
 
     bool inProcessMessages;
 
     bool pendingSyncFence, syncFence;
-    rdr::U32 fenceFlags;
+    uint32_t fenceFlags;
     unsigned fenceDataLen;
-    char *fenceData;
+    uint8_t *fenceData;
 
     Congestion congestion;
     Timer congestionTimer;
@@ -189,7 +192,7 @@ namespace rfb {
     Region cuRegion;
     EncodeManager encodeManager;
 
-    std::map<rdr::U32, rdr::U32> pressedKeys;
+    std::map<uint32_t, uint32_t> pressedKeys;
 
     Timer idleTimer;
 
@@ -197,7 +200,7 @@ namespace rfb {
     Point pointerEventPos;
     bool clientHasCursor;
 
-    CharArray closeReason;
+    std::string closeReason;
   };
 }
 #endif

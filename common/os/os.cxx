@@ -1,4 +1,5 @@
 /* Copyright (C) 2010 TightVNC Team.  All Rights Reserved.
+ * Copyright 2021-2023 Pierre Ossman for Cendio AB
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,82 +27,137 @@
 
 #ifndef WIN32
 #include <pwd.h>
+#include <limits.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
+#include <errno.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 #else
+#include <io.h>
 #include <windows.h>
 #include <wininet.h> /* MinGW needs it */
 #include <shlobj.h>
+#define mkdir(path, mode) mkdir(path)
 #endif
 
-static int gethomedir(char **dirp, bool userDir)
+static const char* getvncdir(bool userDir, const char *xdg_env, const char *xdg_def)
 {
-#ifndef WIN32
-	char *homedir, *dir;
-	size_t len;
-	uid_t uid;
-	struct passwd *passwd;
-#else
-	TCHAR *dir;
-	BOOL ret;
-#endif
-
-	assert(dirp != NULL && *dirp == NULL);
+  static char dir[PATH_MAX], legacy[PATH_MAX];
 
 #ifndef WIN32
-	homedir = getenv("HOME");
-	if (homedir == NULL) {
-		uid = getuid();
-		passwd = getpwuid(uid);
-		if (passwd == NULL) {
-			/* Do we want emit error msg here? */
-			return -1;
-		}
-		homedir = passwd->pw_dir;
-	}
-
-	len = strlen(homedir);
-	dir = new char[len+7];
-	if (dir == NULL)
-		return -1;
-
-	memcpy(dir, homedir, len);
-	if (userDir)
-		dir[len]='\0';
-	else
-		memcpy(dir + len, "/.vnc/\0", 7);
+  char *homedir, *xdgdir;
+  uid_t uid;
+  struct passwd *passwd;
 #else
-	dir = new TCHAR[MAX_PATH];
-	if (dir == NULL)
-		return -1;
-
-	if (userDir)
-		ret = SHGetSpecialFolderPath(NULL, dir, CSIDL_PROFILE, FALSE);
-	else
-		ret = SHGetSpecialFolderPath(NULL, dir, CSIDL_APPDATA, FALSE);
-
-	if (ret == FALSE) {
-		delete [] dir;
-		return -1;
-	}
-	if (userDir)
-		dir[strlen(dir)+1] = '\0';
-	else
-		memcpy(dir+strlen(dir), (TCHAR *)"\\vnc\\\0", 6);
+  BOOL ret;
 #endif
-	*dirp = dir;
-	return 0;
+
+#ifndef WIN32
+  homedir = getenv("HOME");
+  if (homedir == nullptr) {
+    uid = getuid();
+    passwd = getpwuid(uid);
+    if (passwd == nullptr) {
+      /* Do we want emit error msg here? */
+      return nullptr;
+    }
+    homedir = passwd->pw_dir;
+  }
+
+  if (userDir)
+    return homedir;
+
+  xdgdir = getenv(xdg_env);
+  if (xdgdir != nullptr && xdgdir[0] == '/')
+    snprintf(dir, sizeof(dir), "%s/tigervnc", xdgdir);
+  else
+    snprintf(dir, sizeof(dir), "%s/%s/tigervnc", homedir, xdg_def);
+
+  snprintf(legacy, sizeof(legacy), "%s/.vnc", homedir);
+#else
+  (void) xdg_def;
+  (void) xdg_env;
+
+  if (userDir)
+    ret = SHGetSpecialFolderPath(nullptr, dir, CSIDL_PROFILE, FALSE);
+  else
+    ret = SHGetSpecialFolderPath(nullptr, dir, CSIDL_APPDATA, FALSE);
+
+  if (ret == FALSE)
+    return nullptr;
+
+  if (userDir)
+    return dir;
+
+  ret = SHGetSpecialFolderPath(nullptr, legacy, CSIDL_APPDATA, FALSE);
+
+  if (ret == FALSE)
+    return nullptr;
+
+  if (strlen(dir) + strlen("\\TigerVNC") >= sizeof(dir))
+    return nullptr;
+  if (strlen(legacy) + strlen("\\vnc") >= sizeof(legacy))
+    return nullptr;
+
+  strcat(dir, "\\TigerVNC");
+  strcat(legacy, "\\vnc");
+#endif
+  return access(legacy, 0) ? legacy : dir;
 }
 
-int getvnchomedir(char **dirp)
+const char* os::getuserhomedir()
 {
-	return gethomedir(dirp, false);
+  return getvncdir(true, nullptr, nullptr);
 }
 
-int getuserhomedir(char **dirp)
+const char* os::getvncconfigdir()
 {
-	return gethomedir(dirp, true);
+  return getvncdir(false, "XDG_CONFIG_HOME", ".config");
 }
 
+const char* os::getvncdatadir()
+{
+  return getvncdir(false, "XDG_DATA_HOME", ".local/share");
+}
+
+const char* os::getvncstatedir()
+{
+  return getvncdir(false, "XDG_STATE_HOME", ".local/state");
+}
+#ifdef __GNUC__
+int os::mkdir_p(const char *path_, mode_t mode)
+{
+  char *path = strdup(path_);
+  char *p;
+
+#ifdef WIN32
+  (void)mode;
+#endif
+
+  for (p = path + 1; *p; p++) {
+    if (*p == '/') {
+      *p = '\0';
+      if (mkdir(path, mode) == -1) {
+        if (errno != EEXIST) {
+          free(path);
+          return -1;
+        }
+      }
+      *p = '/';
+    }
+  }
+
+  if (mkdir(path, mode) == -1) {
+    free(path);
+    return -1;
+  }
+
+  free(path);
+
+  return 0;
+}
+#endif

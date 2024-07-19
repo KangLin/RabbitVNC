@@ -34,18 +34,18 @@ namespace rfb {
   public:
     SSecurityVeNCrypt(SConnection* sc, SecurityServer *sec);
     ~SSecurityVeNCrypt();
-    virtual bool processMsg();
-    virtual int getType() const { return chosenType; }
-    virtual const char* getUserName() const;
-    virtual SConnection::AccessRights getAccessRights() const;
+    bool processMsg() override;
+    int getType() const override { return chosenType; }
+    const char* getUserName() const override;
+    AccessRights getAccessRights() const override;
 
   protected:
     SSecurity *ssecurity;
     SecurityServer *security;
     bool haveSentVersion, haveRecvdMajorVersion, haveRecvdMinorVersion;
     bool haveSentTypes, haveChosenType;
-    rdr::U8 majorVersion, minorVersion, numTypes;
-    rdr::U32 *subTypes, chosenType;
+    uint8_t majorVersion, minorVersion, numTypes;
+    uint32_t *subTypes, chosenType;
   };
 }
 #endif

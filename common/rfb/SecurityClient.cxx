@@ -32,13 +32,14 @@
 #ifdef HAVE_GNUTLS
 #include <rfb/CSecurityTLS.h>
 #endif
+#ifdef HAVE_NETTLE
+#include <rfb/CSecurityRSAAES.h>
+#include <rfb/CSecurityDH.h>
+#include <rfb/CSecurityMSLogonII.h>
+#endif
 
 using namespace rdr;
 using namespace rfb;
-
-#ifdef HAVE_GNUTLS
-UserMsgBox *CSecurityTLS::msg = NULL;
-#endif
 
 StringParameter SecurityClient::secTypes
 ("SecurityTypes",
@@ -46,20 +47,22 @@ StringParameter SecurityClient::secTypes
 #ifdef HAVE_GNUTLS
  ", TLSNone, TLSVnc, TLSPlain, X509None, X509Vnc, X509Plain"
 #endif
+#ifdef HAVE_NETTLE
+ ", RA2, RA2ne, RA2_256, RA2ne_256, DH, MSLogonII"
+#endif
  ")",
 #ifdef HAVE_GNUTLS
- "X509Plain,TLSPlain,X509Vnc,TLSVnc,X509None,TLSNone,VncAuth,None",
-#else
- "VncAuth,None",
+ "X509Plain,TLSPlain,X509Vnc,TLSVnc,X509None,TLSNone,"
 #endif
+#ifdef HAVE_NETTLE
+ "RA2,RA2_256,RA2ne,RA2ne_256,DH,MSLogonII"
+#endif
+ "VncAuth,None",
 ConfViewer);
 
-CSecurity* SecurityClient::GetCSecurity(CConnection* cc, U32 secType)
+CSecurity* SecurityClient::GetCSecurity(CConnection* cc, uint32_t secType)
 {
-    assert(upg != NULL); /* (upg == NULL) means bug in the viewer, please call CConnect::security::setUserPasswdGetter */
-#ifdef HAVE_GNUTLS
-    assert (CSecurityTLS::msg != NULL);
-#endif
+    assert(upg != nullptr); /* (upg == nullptr) means bug in the viewer, please call rfb::SecurityClient::setUserPasswdGetter */
     
     if (!IsSupported(secType))
         goto bail;
@@ -72,35 +75,43 @@ CSecurity* SecurityClient::GetCSecurity(CConnection* cc, U32 secType)
 #ifdef HAVE_GNUTLS
     case secTypeTLSNone:
         return new CSecurityStack(cc, secTypeTLSNone,
-                                  "TLS with no password",
-                                  new CSecurityTLS(cc, true));
+                                  new CSecurityTLS(cc, true, msg));
     case secTypeTLSVnc:
         return new CSecurityStack(cc, secTypeTLSVnc,
-                                  "TLS with VNCAuth",
-                                  new CSecurityTLS(cc, true),
+                                  new CSecurityTLS(cc, true, msg),
                                   new CSecurityVncAuth(cc, upg));
     case secTypeTLSPlain:
         return new CSecurityStack(cc, secTypeTLSPlain,
-                                  "TLS with Username/Password",
-                                  new CSecurityTLS(cc, true),
+                                  new CSecurityTLS(cc, true, msg),
                                   new CSecurityPlain(cc, upg));
     case secTypeX509None:
         return new CSecurityStack(cc, secTypeX509None,
-                                  "X509 with no password",
-                                  new CSecurityTLS(cc, false));
+                                  new CSecurityTLS(cc, false, msg));
     case secTypeX509Vnc:
         return new CSecurityStack(cc, secTypeX509Vnc,
-                                  "X509 with VNCAuth",
-                                  new CSecurityTLS(cc, false),
+                                  new CSecurityTLS(cc, false, msg),
                                   new CSecurityVncAuth(cc, upg));
     case secTypeX509Plain:
         return new CSecurityStack(cc, secTypeX509Plain,
-                                  "X509 with Username/Password",
-                                  new CSecurityTLS(cc, false),
+                                  new CSecurityTLS(cc, false, msg),
                                   new CSecurityPlain(cc, upg));
 #endif
-    }
-    
+#ifdef HAVE_NETTLE
+  case secTypeRA2:
+    return new CSecurityRSAAES(cc, secTypeRA2, 128, true);
+  case secTypeRA2ne:
+    return new CSecurityRSAAES(cc, secTypeRA2ne, 128, false);
+  case secTypeRA256:
+    return new CSecurityRSAAES(cc, secTypeRA256, 256, true);
+  case secTypeRAne256:
+    return new CSecurityRSAAES(cc, secTypeRAne256, 256, false);
+  case secTypeDH:
+    return new CSecurityDH(cc);
+  case secTypeMSLogonII:
+    return new CSecurityMSLogonII(cc);
+#endif
+  }
+
 bail:
-    throw Exception("Security type not supported");
+  throw Exception("Security type not supported");
 }

@@ -22,7 +22,6 @@
 // ServerST will be derived.
 
 #include <string.h>
-#include <rfb/util.h>
 #include <rfb/ServerCore.h>
 
 rfb::IntParameter rfb::Server::idleTimeout
@@ -78,7 +77,7 @@ rfb::BoolParameter rfb::Server::acceptKeyEvents
  true);
 rfb::BoolParameter rfb::Server::acceptPointerEvents
 ("AcceptPointerEvents",
- "Accept pointer press and release events from clients.",
+ "Accept pointer movement and button events from clients.",
  true);
 rfb::BoolParameter rfb::Server::acceptCutText
 ("AcceptCutText",

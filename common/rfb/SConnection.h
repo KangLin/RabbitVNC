@@ -24,9 +24,12 @@
 #ifndef __RFB_SCONNECTION_H__
 #define __RFB_SCONNECTION_H__
 
+#include <string>
+
 #include <rdr/InStream.h>
 #include <rdr/OutStream.h>
 
+#include <rfb/AccessRights.h>
 #include <rfb/SMsgHandler.h>
 #include <rfb/SecurityServer.h>
 #include <rfb/Timer.h>
@@ -40,7 +43,7 @@ namespace rfb {
   class SConnection : public SMsgHandler {
   public:
 
-    SConnection();
+    SConnection(AccessRights accessRights);
     virtual ~SConnection();
 
     // Methods to initialise the connection
@@ -68,7 +71,7 @@ namespace rfb {
     // later, after queryConnection() has returned.  It can only be called when
     // in state RFBSTATE_QUERYING.  On rejection, an AuthFailureException is
     // thrown, so this must be handled appropriately by the caller.
-    void approveConnection(bool accept, const char* reason=0);
+    void approveConnection(bool accept, const char* reason=nullptr);
 
 
     // Methods to terminate the connection
@@ -80,18 +83,17 @@ namespace rfb {
 
     // Overridden from SMsgHandler
 
-    virtual void setEncodings(int nEncodings, const rdr::S32* encodings);
+    void setEncodings(int nEncodings, const int32_t* encodings) override;
 
-    virtual void clientCutText(const char* str);
+    void clientCutText(const char* str) override;
 
-    virtual void handleClipboardRequest(rdr::U32 flags);
-    virtual void handleClipboardPeek(rdr::U32 flags);
-    virtual void handleClipboardNotify(rdr::U32 flags);
-    virtual void handleClipboardProvide(rdr::U32 flags,
-                                        const size_t* lengths,
-                                        const rdr::U8* const* data);
+    void handleClipboardRequest(uint32_t flags) override;
+    void handleClipboardPeek() override;
+    void handleClipboardNotify(uint32_t flags) override;
+    void handleClipboardProvide(uint32_t flags, const size_t* lengths,
+                                const uint8_t* const* data) override;
 
-    virtual void supportsQEMUKeyEvent();
+    void supportsQEMUKeyEvent() override;
 
 
     // Methods to be overridden in a derived class
@@ -115,27 +117,27 @@ namespace rfb {
 
     // clientInit() is called when the ClientInit message is received.  The
     // derived class must call on to SConnection::clientInit().
-    virtual void clientInit(bool shared);
+    void clientInit(bool shared) override;
 
     // setPixelFormat() is called when a SetPixelFormat message is received.
     // The derived class must call on to SConnection::setPixelFormat().
-    virtual void setPixelFormat(const PixelFormat& pf);
+    void setPixelFormat(const PixelFormat& pf) override;
 
     // framebufferUpdateRequest() is called when a FramebufferUpdateRequest
     // message is received.  The derived class must call on to
     // SConnection::framebufferUpdateRequest().
-    virtual void framebufferUpdateRequest(const Rect& r, bool incremental);
+    void framebufferUpdateRequest(const Rect& r, bool incremental) override;
 
     // fence() is called when we get a fence request or response. By default
     // it responds directly to requests (stating it doesn't support any
     // synchronisation) and drops responses. Override to implement more proper
     // support.
-    virtual void fence(rdr::U32 flags, unsigned len, const char data[]);
+    void fence(uint32_t flags, unsigned len, const uint8_t data[]) override;
 
     // enableContinuousUpdates() is called when the client wants to enable
     // or disable continuous updates, or change the active area.
-    virtual void enableContinuousUpdates(bool enable,
-                                         int x, int y, int w, int h);
+    void enableContinuousUpdates(bool enable,
+                                 int x, int y, int w, int h) override;
 
     // handleClipboardRequest() is called whenever the client requests
     // the server to send over its clipboard data. It will only be
@@ -173,20 +175,12 @@ namespace rfb {
     // clipboard via handleClipboardRequest().
     virtual void sendClipboardData(const char* data);
 
+    // getAccessRights() returns the access rights of a SConnection to the server.
+    AccessRights getAccessRights() { return accessRights; }
+
     // setAccessRights() allows a security package to limit the access rights
     // of a SConnection to the server.  How the access rights are treated
     // is up to the derived class.
-
-    typedef rdr::U16 AccessRights;
-    static const AccessRights AccessView;           // View display contents
-    static const AccessRights AccessKeyEvents;      // Send key events
-    static const AccessRights AccessPtrEvents;      // Send pointer events
-    static const AccessRights AccessCutText;        // Send/receive clipboard events
-    static const AccessRights AccessSetDesktopSize; // Change desktop size
-    static const AccessRights AccessNonShared;      // Exclusive access to the server
-    static const AccessRights AccessDefault;        // The default rights, INCLUDING FUTURE ONES
-    static const AccessRights AccessNoQuery;        // Connect without local user accepting
-    static const AccessRights AccessFull;           // All of the available AND FUTURE rights
     virtual void setAccessRights(AccessRights ar);
     virtual bool accessCheck(AccessRights ar) const;
 
@@ -216,13 +210,13 @@ namespace rfb {
 
     stateEnum state() { return state_; }
 
-    rdr::S32 getPreferredEncoding() { return preferredEncoding; }
+    int32_t getPreferredEncoding() { return preferredEncoding; }
 
   protected:
     // throwConnFailedException() prints a message to the log, sends a conn
     // failed message to the client (if possible) and throws a
     // ConnFailedException.
-    void throwConnFailedException(const char* format, ...) __printf_attr(2, 3);
+    void throwConnFailedException(const char* format, ...);
 
     void setState(stateEnum s) { state_ = s; }
 
@@ -242,7 +236,7 @@ namespace rfb {
     bool processSecurityFailure();
     bool processInitMsg();
 
-    bool handleAuthFailureTimeout(Timer* t);
+    void handleAuthFailureTimeout(Timer* t);
 
     int defaultMajorVersion, defaultMinorVersion;
 
@@ -256,13 +250,14 @@ namespace rfb {
     SSecurity* ssecurity;
 
     MethodTimer<SConnection> authFailureTimer;
-    CharArray authFailureMsg;
+    std::string authFailureMsg;
 
     stateEnum state_;
-    rdr::S32 preferredEncoding;
+    int32_t preferredEncoding;
     AccessRights accessRights;
 
-    char* clientClipboard;
+    std::string clientClipboard;
+    bool hasRemoteClipboard;
     bool hasLocalClipboard;
     bool unsolicitedClipboardAttempt;
   };

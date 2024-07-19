@@ -31,8 +31,10 @@ CopyRectDecoder::~CopyRectDecoder()
 {
 }
 
-bool CopyRectDecoder::readRect(const Rect& r, rdr::InStream* is,
-                               const ServerParams& server, rdr::OutStream* os)
+bool CopyRectDecoder::readRect(const Rect& /*r*/,
+                               rdr::InStream* is,
+                               const ServerParams& /*server*/,
+                               rdr::OutStream* os)
 {
   if (!is->hasData(4))
     return false;
@@ -42,7 +44,7 @@ bool CopyRectDecoder::readRect(const Rect& r, rdr::InStream* is,
 
 
 void CopyRectDecoder::getAffectedRegion(const Rect& rect,
-                                        const void* buffer,
+                                        const uint8_t* buffer,
                                         size_t buflen,
                                         const ServerParams& server,
                                         Region* region)
@@ -57,8 +59,9 @@ void CopyRectDecoder::getAffectedRegion(const Rect& rect,
                                                    srcY-rect.tl.y))));
 }
 
-void CopyRectDecoder::decodeRect(const Rect& r, const void* buffer,
-                                 size_t buflen, const ServerParams& server,
+void CopyRectDecoder::decodeRect(const Rect& r, const uint8_t* buffer,
+                                 size_t buflen,
+                                 const ServerParams& /*server*/,
                                  ModifiablePixelBuffer* pb)
 {
   rdr::MemInStream is(buffer, buflen);

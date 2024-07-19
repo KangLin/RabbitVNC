@@ -24,10 +24,11 @@
 #ifndef __RFB_CCONNECTION_H__
 #define __RFB_CCONNECTION_H__
 
+#include <string>
+
 #include <rfb/CMsgHandler.h>
 #include <rfb/DecodeManager.h>
 #include <rfb/SecurityClient.h>
-#include <rfb/util.h>
 
 namespace rfb {
 
@@ -48,7 +49,7 @@ namespace rfb {
     // which we are connected.  This might be the result of getPeerEndpoint on
     // a TcpSocket, for example, or a host specified by DNS name & port.
     // The serverName is used when verifying the Identity of a host (see RA2).
-    void setServerName(const char* name_) { serverName.replaceBuf(strDup(name_)); }
+    void setServerName(const char* name_);
 
     // setStreams() sets the streams to be used for the connection.  These must
     // be set before initialiseProtocol() and processMsg() are called.  The
@@ -96,34 +97,32 @@ namespace rfb {
 
     // Note: These must be called by any deriving classes
 
-    virtual void setDesktopSize(int w, int h);
-    virtual void setExtendedDesktopSize(unsigned reason, unsigned result,
-                                        int w, int h,
-                                        const ScreenSet& layout);
+    void setDesktopSize(int w, int h) override;
+    void setExtendedDesktopSize(unsigned reason, unsigned result,
+                                int w, int h,
+                                const ScreenSet& layout) override;
 
-    virtual void endOfContinuousUpdates();
+    void endOfContinuousUpdates() override;
 
-    virtual void serverInit(int width, int height,
-                            const PixelFormat& pf,
-                            const char* name);
+    void serverInit(int width, int height, const PixelFormat& pf,
+                    const char* name) override;
 
-    virtual bool readAndDecodeRect(const Rect& r, int encoding,
-                                   ModifiablePixelBuffer* pb);
+    bool readAndDecodeRect(const Rect& r, int encoding,
+                           ModifiablePixelBuffer* pb) override;
 
-    virtual void framebufferUpdateStart();
-    virtual void framebufferUpdateEnd();
-    virtual bool dataRect(const Rect& r, int encoding);
+    void framebufferUpdateStart() override;
+    void framebufferUpdateEnd() override;
+    bool dataRect(const Rect& r, int encoding) override;
 
-    virtual void serverCutText(const char* str);
+    void serverCutText(const char* str) override;
 
-    virtual void handleClipboardCaps(rdr::U32 flags,
-                                     const rdr::U32* lengths);
-    virtual void handleClipboardRequest(rdr::U32 flags);
-    virtual void handleClipboardPeek(rdr::U32 flags);
-    virtual void handleClipboardNotify(rdr::U32 flags);
-    virtual void handleClipboardProvide(rdr::U32 flags,
-                                        const size_t* lengths,
-                                        const rdr::U8* const* data);
+    void handleClipboardCaps(uint32_t flags,
+                                     const uint32_t* lengths) override;
+    void handleClipboardRequest(uint32_t flags) override;
+    void handleClipboardPeek() override;
+    void handleClipboardNotify(uint32_t flags) override;
+    void handleClipboardProvide(uint32_t flags, const size_t* lengths,
+                                const uint8_t* const* data) override;
 
 
     // Methods to be overridden in a derived class
@@ -160,7 +159,7 @@ namespace rfb {
     // requestClipboard(). Note that this function might never be
     // called if the clipboard data was no longer available when the
     // server received the request.
-    virtual void handleClipboardData(unsigned int format, const char* data, size_t length);
+    virtual void handleClipboardData(const char* data);
 
 
     // Other methods
@@ -178,7 +177,7 @@ namespace rfb {
     // sendClipboardData() transfers the clipboard data to the server
     // and should be called whenever the server has requested the
     // clipboard via handleClipboardRequest().
-    virtual void sendClipboardData(unsigned int format, const char* data, int length);
+    virtual void sendClipboardData(const char* data);
 
     // refreshFramebuffer() forces a complete refresh of the entire
     // framebuffer
@@ -206,7 +205,7 @@ namespace rfb {
 
     // Access method used by SSecurity implementations that can verify servers'
     // Identities, to determine the unique(ish) name of the server.
-    const char* getServerName() const { return serverName.buf; }
+    const char* getServerName() const { return serverName.c_str(); }
 
     bool isSecure() const { return csecurity ? csecurity->isSecure() : false; }
 
@@ -227,7 +226,6 @@ namespace rfb {
 
     CSecurity *csecurity;
     SecurityClient security;
-    
   protected:
     void setState(stateEnum s) { state_ = s; }
 
@@ -249,7 +247,7 @@ namespace rfb {
     // responds to requests, stating no support for synchronisation.
     // When overriding, call CMsgHandler::fence() directly in order to
     // state correct support for fence flags.
-    virtual void fence(rdr::U32 flags, unsigned len, const char data[]);
+    void fence(uint32_t flags, unsigned len, const uint8_t data[]) override;
 
   private:
     bool processVersionMsg();
@@ -272,7 +270,7 @@ namespace rfb {
     bool shared;
     stateEnum state_;
 
-    CharArray serverName;
+    std::string serverName;
 
     bool pendingPFChange;
     rfb::PixelFormat pendingPF;
@@ -294,7 +292,8 @@ namespace rfb {
     ModifiablePixelBuffer* framebuffer;
     DecodeManager decoder;
 
-    char* serverClipboard;
+    std::string serverClipboard;
+    bool hasRemoteClipboard;
     bool hasLocalClipboard;
     bool unsolicitedClipboardAttempt;
   };

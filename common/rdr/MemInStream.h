@@ -19,8 +19,8 @@
 //
 // rdr::MemInStream is an InStream which streams from a given memory buffer.
 // If the deleteWhenDone parameter is true then the buffer will be delete[]d in
-// the destructor.  Note that it is delete[]d as a U8* - strictly speaking this
-// means it ought to be new[]ed as a U8* as well, but on most platforms this
+// the destructor.  Note that it is delete[]d as a uint8_t* - strictly speaking this
+// means it ought to be new[]ed as a uint8_t* as well, but on most platforms this
 // doesn't matter.
 //
 
@@ -36,8 +36,8 @@ namespace rdr {
 
   public:
 
-    MemInStream(const void* data, size_t len, bool deleteWhenDone_=false)
-      : start((const U8*)data), deleteWhenDone(deleteWhenDone_)
+    MemInStream(const uint8_t* data, size_t len, bool deleteWhenDone_=false)
+      : start(data), deleteWhenDone(deleteWhenDone_)
     {
       ptr = start;
       end = start + len;
@@ -54,13 +54,13 @@ namespace rdr {
         delete [] start;
     }
 
-    size_t pos() { return ptr - start; }
+    size_t pos() override { return ptr - start; }
     void reposition(size_t pos) { ptr = start + pos; }
 
   private:
 
-    bool overrun(size_t needed) { throw EndOfStream(); }
-    const U8* start;
+    bool overrun(size_t /*needed*/) override { throw EndOfStream(); }
+    const uint8_t* start;
     bool deleteWhenDone;
   };
 

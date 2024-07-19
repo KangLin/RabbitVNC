@@ -35,13 +35,13 @@ FileInStream::FileInStream(const char *fileName)
 FileInStream::~FileInStream(void) {
   if (file) {
     fclose(file);
-    file = NULL;
+    file = nullptr;
   }
 }
 
-bool FileInStream::fillBuffer(size_t maxSize)
+bool FileInStream::fillBuffer()
 {
-  size_t n = fread((U8 *)end, 1, maxSize, file);
+  size_t n = fread((uint8_t*)end, 1, availSpace(), file);
   if (n == 0) {
     if (ferror(file))
       throw SystemException("fread", errno);

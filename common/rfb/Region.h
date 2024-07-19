@@ -57,7 +57,8 @@ namespace rfb {
     Region union_(const Region& r) const;
     Region subtract(const Region& r) const;
 
-    bool equals(const Region& b) const;
+    bool operator==(const Region& b) const;
+    bool operator!=(const Region& b) const;
     int numRects() const;
     bool is_empty() const { return numRects() == 0; }
 

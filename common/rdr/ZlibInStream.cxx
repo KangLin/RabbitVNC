@@ -25,7 +25,7 @@
 using namespace rdr;
 
 ZlibInStream::ZlibInStream()
-  : underlying(0), zs(NULL), bytesIn(0)
+  : underlying(nullptr), zs(nullptr), bytesIn(0)
 {
   init();
 }
@@ -50,7 +50,7 @@ void ZlibInStream::flushUnderlying()
     skip(avail());
   }
 
-  setUnderlying(NULL, 0);
+  setUnderlying(nullptr, 0);
 }
 
 void ZlibInStream::reset()
@@ -61,44 +61,44 @@ void ZlibInStream::reset()
 
 void ZlibInStream::init()
 {
-  assert(zs == NULL);
+  assert(zs == nullptr);
 
   zs = new z_stream;
-  zs->zalloc    = Z_NULL;
-  zs->zfree     = Z_NULL;
-  zs->opaque    = Z_NULL;
-  zs->next_in   = Z_NULL;
+  zs->zalloc    = nullptr;
+  zs->zfree     = nullptr;
+  zs->opaque    = nullptr;
+  zs->next_in   = nullptr;
   zs->avail_in  = 0;
   if (inflateInit(zs) != Z_OK) {
     delete zs;
-    zs = NULL;
+    zs = nullptr;
     throw Exception("ZlibInStream: inflateInit failed");
   }
 }
 
 void ZlibInStream::deinit()
 {
-  assert(zs != NULL);
-  setUnderlying(NULL, 0);
+  assert(zs != nullptr);
+  setUnderlying(nullptr, 0);
   inflateEnd(zs);
   delete zs;
-  zs = NULL;
+  zs = nullptr;
 }
 
-bool ZlibInStream::fillBuffer(size_t maxSize)
+bool ZlibInStream::fillBuffer()
 {
   if (!underlying)
     throw Exception("ZlibInStream overrun: no underlying stream");
 
-  zs->next_out = (U8*)end;
-  zs->avail_out = maxSize;
+  zs->next_out = (uint8_t*)end;
+  zs->avail_out = availSpace();
 
   if (!underlying->hasData(1))
     return false;
   size_t length = underlying->avail();
   if (length > bytesIn)
     length = bytesIn;
-  zs->next_in = (U8*)underlying->getptr(length);
+  zs->next_in = (uint8_t*)underlying->getptr(length);
   zs->avail_in = length;
 
   int rc = inflate(zs, Z_SYNC_FLUSH);

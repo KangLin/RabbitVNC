@@ -28,10 +28,10 @@ namespace rfb {
   class CSecurityPlain : public CSecurity {
   public:
     CSecurityPlain(CConnection* cc, UserPasswdGetter* upg)
-        : CSecurity(cc), upg(upg) {}
-    virtual bool processMsg();
-    virtual int getType() const { return secTypePlain; }
-    virtual const char* description() const { return "ask for username and password"; }
+      : CSecurity(cc), upg(upg) {}
+
+    bool processMsg() override;
+    int getType() const override { return secTypePlain; }
   private:
     UserPasswdGetter *upg;
   };

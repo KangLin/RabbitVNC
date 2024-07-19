@@ -49,8 +49,8 @@ namespace network {
     void cork(bool enable) { outstream->cork(enable); }
 
     // information about the remote end of the socket
-    virtual char* getPeerAddress() = 0; // a string e.g. "192.168.0.1"
-    virtual char* getPeerEndpoint() = 0; // <address>::<port>
+    virtual const char* getPeerAddress() = 0; // a string e.g. "192.168.0.1"
+    virtual const char* getPeerEndpoint() = 0; // <address>::<port>
 
     // Was there a "?" in the ConnectionFilter used to accept this Socket?
     void setRequiresQuery();
@@ -109,41 +109,6 @@ namespace network {
 
   struct SocketException : public rdr::SystemException {
     SocketException(const char* text, int err_) : rdr::SystemException(text, err_) {}
-  };
-
-  class SocketServer {
-  public:
-    virtual ~SocketServer() {}
-
-    // addSocket() tells the server to serve the Socket.  The caller
-    //   retains ownership of the Socket - the only way for the server
-    //   to discard a Socket is by calling shutdown() on it.
-    //   outgoing is set to true if the socket was created by connecting out
-    //   to another host, or false if the socket was created by accept()ing
-    //   an incoming connection.
-    virtual void addSocket(network::Socket* sock, bool outgoing=false) = 0;
-
-    // removeSocket() tells the server to stop serving the Socket.  The
-    //   caller retains ownership of the Socket - the server must NOT
-    //   delete the Socket!  This call is used mainly to cause per-Socket
-    //   resources to be freed.
-    virtual void removeSocket(network::Socket* sock) = 0;
-
-    // getSockets() gets a list of sockets.  This can be used to generate an
-    //   fd_set for calling select().
-    virtual void getSockets(std::list<network::Socket*>* sockets) = 0;
-
-    // processSocketReadEvent() tells the server there is a Socket read event.
-    //   The implementation can indicate that the Socket is no longer active
-    //   by calling shutdown() on it.  The caller will then call removeSocket()
-    //   soon after processSocketEvent returns, to allow any pre-Socket
-    //   resources to be tidied up.
-    virtual void processSocketReadEvent(network::Socket* sock) = 0;
-
-    // processSocketReadEvent() tells the server there is a Socket write event.
-    //   This is only necessary if the Socket has been put in non-blocking
-    //   mode and needs this callback to flush the buffer.
-    virtual void processSocketWriteEvent(network::Socket* sock) = 0;
   };
 
 }

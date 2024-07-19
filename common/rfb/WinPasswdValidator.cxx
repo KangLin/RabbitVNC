@@ -20,26 +20,18 @@
 
 #include <rfb/WinPasswdValidator.h>
 #include <windows.h>
-#include <tchar.h>
 
 using namespace rfb;
 
 // This method will only work for Windows NT, 2000, and XP (and possibly Vista)
-bool WinPasswdValidator::validateInternal(rfb::SConnection* sc,
+bool WinPasswdValidator::validateInternal(rfb::SConnection* /*sc*/,
 					  const char* username,
 					  const char* password)
 {
-	TCHAR* user = (TCHAR*) strDup(username);
-	TCHAR* pass = (TCHAR*) strDup(password);
-	TCHAR* domain = (TCHAR*) strDup(".");
 	HANDLE handle;
 
-	BOOL ret = LogonUser(user, domain, pass, LOGON32_LOGON_NETWORK,
+	BOOL ret = LogonUser(username, ".", password, LOGON32_LOGON_NETWORK,
 			     LOGON32_PROVIDER_DEFAULT, &handle);
-	delete [] user;
-	delete [] pass;
-	delete [] domain;
-
 	if (ret != 0) {
 		CloseHandle(handle);
 		return true;

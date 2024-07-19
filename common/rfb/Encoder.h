@@ -20,7 +20,8 @@
 #ifndef __RFB_ENCODER_H__
 #define __RFB_ENCODER_H__
 
-#include <rdr/types.h>
+#include <stdint.h>
+
 #include <rfb/Rect.h>
 
 namespace rfb {
@@ -51,9 +52,10 @@ namespace rfb {
     // checking the list of encodings in the connection parameters.
     virtual bool isSupported()=0;
 
-    virtual void setCompressLevel(int level) {};
-    virtual void setQualityLevel(int level) {};
-    virtual void setFineQualityLevel(int quality, int subsampling) {};
+    virtual void setCompressLevel(int /*level*/) {};
+    virtual void setQualityLevel(int /*level*/) {};
+    virtual void setFineQualityLevel(int /*quality*/,
+                                     int /*subsampling*/) {};
 
     virtual int getCompressLevel() { return -1; };
     virtual int getQualityLevel() { return -1; };
@@ -82,7 +84,7 @@ namespace rfb {
     // efficient short cut.
     virtual void writeSolidRect(int width, int height,
                                 const PixelFormat& pf,
-                                const rdr::U8* colour)=0;
+                                const uint8_t* colour)=0;
 
   protected:
     // Helper method for redirecting a single colour palette to the
