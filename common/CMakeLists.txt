@@ -1,5 +1,8 @@
 project(RabbitVNC)
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 # Check for GNUTLS library
 option(ENABLE_GNUTLS "Enable protocol encryption and advanced authentication" ON)
 if(ENABLE_GNUTLS)
