@@ -23,12 +23,9 @@
 
 #include <rdr/HexOutStream.h>
 #include <rfb/util.h>
+#include <algorithm>
 
 using namespace rdr;
-
-#ifndef WIN32
-static inline size_t min(size_t a, size_t b) {return a<b ? a : b;}
-#endif
 
 HexOutStream::HexOutStream(OutStream& os)
   : out_stream(os)
@@ -43,7 +40,7 @@ bool HexOutStream::flushBuffer()
 {
   while (sentUpTo != ptr) {
     uint8_t* optr = out_stream.getptr(2);
-    size_t length = min(ptr-sentUpTo, out_stream.avail()/2);
+    size_t length = std::min(ptr-sentUpTo, (int64_t)out_stream.avail()/2);
 
     for (size_t i=0; i<length; i++)
       rfb::binToHex(&sentUpTo[i], 1, (char*)&optr[i*2], 2);
