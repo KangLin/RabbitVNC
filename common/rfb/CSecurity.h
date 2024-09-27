@@ -47,7 +47,7 @@ namespace rfb {
     virtual bool processMsg() = 0;
     virtual int getType() const = 0;
     virtual bool isSecure() const { return false; }
-    
+
   protected:
     CConnection* cc;
   };

@@ -25,10 +25,17 @@ in this Software without prior written authorization from The Open Group.
 
 */
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <stdlib.h>
 
 #include "keysymdef.h"
 #include "KeysymStr.h"
+
+/* Change the name of this to avoid conflict with libX11 */
+#define _XkeyTable _vncXkeyTable
 
 #define NEEDKTABLE
 #define NEEDVTABLE

@@ -17,12 +17,14 @@
  * USA.
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <rfb/CConnection.h>
 #include <rfb/CSecurityPlain.h>
-#include <rfb/UserPasswdGetter.h>
 
 #include <rdr/OutStream.h>
-#include <assert.h>
 
 using namespace rfb;
 
@@ -33,8 +35,7 @@ bool CSecurityPlain::processMsg()
   std::string username;
   std::string password;
 
-  assert(upg != NULL); /* (upg == NULL) means bug in the viewer, please call SecurityClient::setUserPasswdGetter */
-  upg->getUserPasswd(cc->isSecure(), &username, &password);
+  cc->getUserPasswd(cc->isSecure(), &username, &password);
 
   // Return the response to the server
   os->writeU32(username.size());

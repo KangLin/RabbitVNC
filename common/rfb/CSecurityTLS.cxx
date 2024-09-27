@@ -21,6 +21,10 @@
  * USA.
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #ifndef HAVE_GNUTLS
 #error "This header should not be compiled without HAVE_GNUTLS defined"
 #endif
@@ -34,58 +38,27 @@
 #include <rfb/CConnection.h>
 #include <rfb/LogWriter.h>
 #include <rfb/Exception.h>
-#include <rfb/UserMsgBox.h>
 #include <rfb/util.h>
+#include <rdr/TLSException.h>
 #include <rdr/TLSInStream.h>
 #include <rdr/TLSOutStream.h>
 #include <os/os.h>
 
 #include <gnutls/x509.h>
 
-/*
- * GNUTLS doesn't correctly export gnutls_free symbol which is
- * a function pointer. Linking with Visual Studio 2008 Express will
- * fail when you call gnutls_free().
- */
-#if WIN32
-#undef gnutls_free
-#define gnutls_free free
-#endif
-
 using namespace rfb;
-
-static const char* configdirfn(const char* fn);
-
-StringParameter CSecurityTLS::X509CA("X509CA", "X509 CA certificate",
-                                     configdirfn("x509_ca.pem"),
-                                     ConfViewer);
-StringParameter CSecurityTLS::X509CRL("X509CRL", "X509 CRL file",
-                                     configdirfn("x509_crl.pem"),
-                                     ConfViewer);
 
 static LogWriter vlog("TLS");
 
-static const char* configdirfn(const char* fn)
-{
-  static char full_path[PATH_MAX];
-  const char* configdir;
-
-  configdir = os::getvncconfigdir();
-  if (configdir == nullptr)
-    return "";
-
-  snprintf(full_path, sizeof(full_path), "%s/%s", configdir, fn);
-  return full_path;
-}
-
-CSecurityTLS::CSecurityTLS(CConnection* cc_, bool _anon, UserMsgBox *msg)
+CSecurityTLS::CSecurityTLS(CConnection* cc_, bool _anon)
   : CSecurity(cc_), session(nullptr),
     anon_cred(nullptr), cert_cred(nullptr),
     anon(_anon), tlsis(nullptr), tlsos(nullptr),
-    rawis(nullptr), rawos(nullptr), msg(msg)
+    rawis(nullptr), rawos(nullptr)
 {
-  if (gnutls_global_init() != GNUTLS_E_SUCCESS)
-    throw AuthFailureException("gnutls_global_init failed");
+  int err = gnutls_global_init();
+  if (err != GNUTLS_E_SUCCESS)
+    throw rdr::TLSException("gnutls_global_init()", err);
 }
 
 void CSecurityTLS::shutdown()
@@ -145,17 +118,21 @@ bool CSecurityTLS::processMsg()
   client = cc;
 
   if (!session) {
+    int ret;
+
     if (!is->hasData(1))
       return false;
 
     if (is->readU8() == 0)
-      throw AuthFailureException("Server failed to initialize TLS session");
+      throw Exception("Server failed to initialize TLS session");
 
-    if (gnutls_init(&session, GNUTLS_CLIENT) != GNUTLS_E_SUCCESS)
-      throw AuthFailureException("gnutls_init failed");
+    ret = gnutls_init(&session, GNUTLS_CLIENT);
+    if (ret != GNUTLS_E_SUCCESS)
+      throw rdr::TLSException("gnutls_init()", ret);
 
-    if (gnutls_set_default_priority(session) != GNUTLS_E_SUCCESS)
-      throw AuthFailureException("gnutls_set_default_priority failed");
+    ret = gnutls_set_default_priority(session);
+    if (ret != GNUTLS_E_SUCCESS)
+      throw rdr::TLSException("gnutls_set_default_priority()", ret);
 
     setParam();
 
@@ -178,7 +155,7 @@ bool CSecurityTLS::processMsg()
 
     vlog.error("TLS Handshake failed: %s\n", gnutls_strerror (err));
     shutdown();
-    throw AuthFailureException("TLS Handshake failed");
+    throw rdr::TLSException("TLS Handshake failed", err);
   }
 
   vlog.debug("TLS handshake completed with %s",
@@ -205,7 +182,7 @@ void CSecurityTLS::setParam()
     prio = (char*)malloc(strlen(Security::GnuTLSPriority) +
                          strlen(kx_anon_priority) + 1);
     if (prio == nullptr)
-      throw AuthFailureException("Not enough memory for GnuTLS priority string");
+      throw Exception("Not enough memory for GnuTLS priority string");
 
     strcpy(prio, Security::GnuTLSPriority);
     if (anon)
@@ -218,7 +195,7 @@ void CSecurityTLS::setParam()
     if (ret != GNUTLS_E_SUCCESS) {
       if (ret == GNUTLS_E_INVALID_REQUEST)
         vlog.error("GnuTLS priority syntax error at: %s", err);
-      throw AuthFailureException("gnutls_set_priority_direct failed");
+      throw rdr::TLSException("gnutls_set_priority_direct()", ret);
     }
   } else if (anon) {
     const char *err;
@@ -230,7 +207,7 @@ void CSecurityTLS::setParam()
     if (ret != GNUTLS_E_SUCCESS) {
       if (ret == GNUTLS_E_INVALID_REQUEST)
         vlog.error("GnuTLS priority syntax error at: %s", err);
-      throw AuthFailureException("gnutls_set_default_priority_append failed");
+      throw rdr::TLSException("gnutls_set_default_priority_append()", ret);
     }
 #else
     // We don't know what the system default priority is, so we guess
@@ -241,7 +218,7 @@ void CSecurityTLS::setParam()
     prio = (char*)malloc(strlen(gnutls_default_priority) +
                          strlen(kx_anon_priority) + 1);
     if (prio == nullptr)
-      throw AuthFailureException("Not enough memory for GnuTLS priority string");
+      throw Exception("Not enough memory for GnuTLS priority string");
 
     strcpy(prio, gnutls_default_priority);
     strcat(prio, kx_anon_priority);
@@ -253,34 +230,43 @@ void CSecurityTLS::setParam()
     if (ret != GNUTLS_E_SUCCESS) {
       if (ret == GNUTLS_E_INVALID_REQUEST)
         vlog.error("GnuTLS priority syntax error at: %s", err);
-      throw AuthFailureException("gnutls_set_priority_direct failed");
+      throw rdr::TLSException("gnutls_set_priority_direct()", ret);
     }
 #endif
   }
 
   if (anon) {
-    if (gnutls_anon_allocate_client_credentials(&anon_cred) != GNUTLS_E_SUCCESS)
-      throw AuthFailureException("gnutls_anon_allocate_client_credentials failed");
+    ret = gnutls_anon_allocate_client_credentials(&anon_cred);
+    if (ret != GNUTLS_E_SUCCESS)
+      throw rdr::TLSException("gnutls_anon_allocate_client_credentials()", ret);
 
-    if (gnutls_credentials_set(session, GNUTLS_CRD_ANON, anon_cred) != GNUTLS_E_SUCCESS)
-      throw AuthFailureException("gnutls_credentials_set failed");
+    ret = gnutls_credentials_set(session, GNUTLS_CRD_ANON, anon_cred);
+    if (ret != GNUTLS_E_SUCCESS)
+      throw rdr::TLSException("gnutls_credentials_set()", ret);
 
     vlog.debug("Anonymous session has been set");
   } else {
-    if (gnutls_certificate_allocate_credentials(&cert_cred) != GNUTLS_E_SUCCESS)
-      throw AuthFailureException("gnutls_certificate_allocate_credentials failed");
+    ret = gnutls_certificate_allocate_credentials(&cert_cred);
+    if (ret != GNUTLS_E_SUCCESS)
+      throw rdr::TLSException("gnutls_certificate_allocate_credentials()", ret);
 
     if (gnutls_certificate_set_x509_system_trust(cert_cred) < 1)
       vlog.error("Could not load system certificate trust store");
+    
+    std::string ca, crl;
+    int nRet = client->getX509File(&ca, &crl);
+    if(nRet)
+        throw AuthFailureException("Get X509 certificate file fail");
+    if(!ca.empty())
+        if (gnutls_certificate_set_x509_trust_file(cert_cred, ca.c_str(), GNUTLS_X509_FMT_PEM) < 0)
+            vlog.error("Could not load user specified certificate authority");
+    if(!crl.empty())
+        if (gnutls_certificate_set_x509_crl_file(cert_cred, crl.c_str(), GNUTLS_X509_FMT_PEM) < 0)
+            vlog.error("Could not load user specified certificate revocation list");
 
-    if (gnutls_certificate_set_x509_trust_file(cert_cred, X509CA, GNUTLS_X509_FMT_PEM) < 0)
-      vlog.error("Could not load user specified certificate authority");
-
-    if (gnutls_certificate_set_x509_crl_file(cert_cred, X509CRL, GNUTLS_X509_FMT_PEM) < 0)
-      vlog.error("Could not load user specified certificate revocation list");
-
-    if (gnutls_credentials_set(session, GNUTLS_CRD_CERTIFICATE, cert_cred) != GNUTLS_E_SUCCESS)
-      throw AuthFailureException("gnutls_credentials_set failed");
+    ret = gnutls_credentials_set(session, GNUTLS_CRD_CERTIFICATE, cert_cred);
+    if (ret != GNUTLS_E_SUCCESS)
+      throw rdr::TLSException("gnutls_credentials_set()", ret);
 
     if (gnutls_server_name_set(session, GNUTLS_NAME_DNS,
                                client->getServerName(),
@@ -302,7 +288,7 @@ void CSecurityTLS::checkSession()
   unsigned int status;
   const gnutls_datum_t *cert_list;
   unsigned int cert_list_size = 0;
-  int err;
+  int err, known;
   bool hostname_match;
 
   const char *hostsDir;
@@ -313,12 +299,12 @@ void CSecurityTLS::checkSession()
     return;
 
   if (gnutls_certificate_type_get(session) != GNUTLS_CRT_X509)
-    throw AuthFailureException("unsupported certificate type");
+    throw Exception("unsupported certificate type");
 
   err = gnutls_certificate_verify_peers2(session, &status);
   if (err != 0) {
     vlog.error("server certificate verification failed: %s", gnutls_strerror(err));
-    throw AuthFailureException("server certificate verification failed");
+    throw rdr::TLSException("server certificate verification()", err);
   }
 
   if (status != 0) {
@@ -336,11 +322,11 @@ void CSecurityTLS::checkSession()
                                                        0) < 0)
         throw Exception("Failed to get certificate error description");
 
-      error = format("Invalid server certificate: %s", status_str.data);
+      error = (const char*)status_str.data;
 
       gnutls_free(status_str.data);
 
-      throw AuthFailureException(error.c_str());
+      throw Exception("Invalid server certificate: %s", error.c_str());
     }
 
     if (gnutls_certificate_verification_status_print(status,
@@ -358,14 +344,14 @@ void CSecurityTLS::checkSession()
 
   cert_list = gnutls_certificate_get_peers(session, &cert_list_size);
   if (!cert_list_size)
-    throw AuthFailureException("empty certificate chain");
+    throw Exception("empty certificate chain");
 
   /* Process only server's certificate, not issuer's certificate */
   gnutls_x509_crt_t crt;
   gnutls_x509_crt_init(&crt);
 
   if (gnutls_x509_crt_import(crt, &cert_list[0], GNUTLS_X509_FMT_DER) < 0)
-    throw AuthFailureException("decoding of certificate failed");
+    throw Exception("decoding of certificate failed");
 
   if (gnutls_x509_crt_check_hostname(crt, client->getServerName()) == 0) {
     vlog.info("Server certificate doesn't match given server name");
@@ -384,31 +370,32 @@ void CSecurityTLS::checkSession()
 
   hostsDir = os::getvncstatedir();
   if (hostsDir == nullptr) {
-    throw AuthFailureException("Could not obtain VNC state directory "
-                               "path for known hosts storage");
+    throw Exception("Could not obtain VNC state directory path for "
+                    "known hosts storage");
   }
 
   std::string dbPath;
   dbPath = (std::string)hostsDir + "/x509_known_hosts";
 
-  err = gnutls_verify_stored_pubkey(dbPath.c_str(), nullptr,
-                                    client->getServerName(), nullptr,
-                                    GNUTLS_CRT_X509, &cert_list[0], 0);
+  known = gnutls_verify_stored_pubkey(dbPath.c_str(), nullptr,
+                                      client->getServerName(), nullptr,
+                                      GNUTLS_CRT_X509, &cert_list[0], 0);
 
   /* Previously known? */
-  if (err == GNUTLS_E_SUCCESS) {
+  if (known == GNUTLS_E_SUCCESS) {
     vlog.info("Server certificate found in known hosts file");
     gnutls_x509_crt_deinit(crt);
     return;
   }
 
-  if ((err != GNUTLS_E_NO_CERTIFICATE_FOUND) &&
-      (err != GNUTLS_E_CERTIFICATE_KEY_MISMATCH)) {
-    throw AuthFailureException("Could not load known hosts database");
+  if ((known != GNUTLS_E_NO_CERTIFICATE_FOUND) &&
+      (known != GNUTLS_E_CERTIFICATE_KEY_MISMATCH)) {
+    throw rdr::TLSException("Could not load known hosts database", known);
   }
 
-  if (gnutls_x509_crt_print(crt, GNUTLS_CRT_PRINT_ONELINE, &info))
-    throw AuthFailureException("Could not find certificate to display");
+  err = gnutls_x509_crt_print(crt, GNUTLS_CRT_PRINT_ONELINE, &info);
+  if (err != GNUTLS_E_SUCCESS)
+    throw rdr::TLSException("Could not find certificate to display", err);
 
   len = strlen((char*)info.data);
   for (size_t i = 0; i < len - 1; i++) {
@@ -417,7 +404,7 @@ void CSecurityTLS::checkSession()
   }
 
   /* New host */
-  if (err == GNUTLS_E_NO_CERTIFICATE_FOUND) {
+  if (known == GNUTLS_E_NO_CERTIFICATE_FOUND) {
     std::string text;
 
     vlog.info("Server host not previously known");
@@ -437,10 +424,10 @@ void CSecurityTLS::checkSession()
                     "Do you want to make an exception for this "
                     "server?", info.data);
 
-      if (!msg->showMsgBox(UserMsgBox::M_YESNO,
+      if (!cc->showMsgBox(MsgBoxFlags::M_YESNO,
                            "Unknown certificate issuer",
                            text.c_str()))
-        throw AuthFailureException("Unknown certificate issuer");
+        throw AuthCancelledException();
 
       status &= ~(GNUTLS_CERT_INVALID |
                   GNUTLS_CERT_SIGNER_NOT_FOUND |
@@ -458,10 +445,10 @@ void CSecurityTLS::checkSession()
                     "Do you want to make an exception for this "
                     "server?", info.data);
 
-      if (!msg->showMsgBox(UserMsgBox::M_YESNO,
+      if (!cc->showMsgBox(MsgBoxFlags::M_YESNO,
                            "Certificate is not yet valid",
                            text.c_str()))
-        throw AuthFailureException("Certificate is not yet valid");
+        throw AuthCancelledException();
 
       status &= ~GNUTLS_CERT_NOT_ACTIVATED;
     }
@@ -476,11 +463,10 @@ void CSecurityTLS::checkSession()
                     "\n"
                     "Do you want to make an exception for this "
                     "server?", info.data);
-
-      if (!msg->showMsgBox(UserMsgBox::M_YESNO,
+      if (!cc->showMsgBox(MsgBoxFlags::M_YESNO,
                            "Expired certificate",
                            text.c_str()))
-        throw AuthFailureException("Expired certificate");
+        throw AuthCancelledException();
 
       status &= ~GNUTLS_CERT_EXPIRED;
     }
@@ -496,17 +482,17 @@ void CSecurityTLS::checkSession()
                     "Do you want to make an exception for this "
                     "server?", info.data);
 
-      if (!msg->showMsgBox(UserMsgBox::M_YESNO,
+      if (!cc->showMsgBox(MsgBoxFlags::M_YESNO,
                            "Insecure certificate algorithm",
                            text.c_str()))
-        throw AuthFailureException("Insecure certificate algorithm");
+        throw AuthCancelledException();
 
       status &= ~GNUTLS_CERT_INSECURE_ALGORITHM;
     }
 
     if (status != 0) {
       vlog.error("Unhandled certificate problems: 0x%x", status);
-      throw AuthFailureException("Unhandled certificate problems");
+      throw Exception("Unhandled certificate problems");
     }
 
     if (!hostname_match) {
@@ -521,12 +507,12 @@ void CSecurityTLS::checkSession()
                     "Do you want to make an exception for this "
                     "server?", client->getServerName(), info.data);
 
-      if (!msg->showMsgBox(UserMsgBox::M_YESNO,
+      if (!cc->showMsgBox(MsgBoxFlags::M_YESNO,
                            "Certificate hostname mismatch",
                            text.c_str()))
-        throw AuthFailureException("Certificate hostname mismatch");
+        throw AuthCancelledException();
     }
-  } else if (err == GNUTLS_E_CERTIFICATE_KEY_MISMATCH) {
+  } else if (known == GNUTLS_E_CERTIFICATE_KEY_MISMATCH) {
     std::string text;
 
     vlog.info("Server host key mismatch");
@@ -547,10 +533,10 @@ void CSecurityTLS::checkSession()
                     "Do you want to make an exception for this "
                     "server?", info.data);
 
-      if (!msg->showMsgBox(UserMsgBox::M_YESNO,
+      if (!cc->showMsgBox(MsgBoxFlags::M_YESNO,
                            "Unexpected server certificate",
                            text.c_str()))
-        throw AuthFailureException("Unexpected server certificate");
+        throw AuthCancelledException();
 
       status &= ~(GNUTLS_CERT_INVALID |
                   GNUTLS_CERT_SIGNER_NOT_FOUND |
@@ -570,10 +556,10 @@ void CSecurityTLS::checkSession()
                     "Do you want to make an exception for this "
                     "server?", info.data);
 
-      if (!msg->showMsgBox(UserMsgBox::M_YESNO,
+      if (!cc->showMsgBox(MsgBoxFlags::M_YESNO,
                            "Unexpected server certificate",
                            text.c_str()))
-        throw AuthFailureException("Unexpected server certificate");
+        throw AuthCancelledException();
 
       status &= ~GNUTLS_CERT_NOT_ACTIVATED;
     }
@@ -591,10 +577,10 @@ void CSecurityTLS::checkSession()
                     "Do you want to make an exception for this "
                     "server?", info.data);
 
-      if (!msg->showMsgBox(UserMsgBox::M_YESNO,
+      if (!cc->showMsgBox(MsgBoxFlags::M_YESNO,
                            "Unexpected server certificate",
                            text.c_str()))
-        throw AuthFailureException("Unexpected server certificate");
+        throw AuthCancelledException();
 
       status &= ~GNUTLS_CERT_EXPIRED;
     }
@@ -612,17 +598,17 @@ void CSecurityTLS::checkSession()
                     "Do you want to make an exception for this "
                     "server?", info.data);
 
-      if (!msg->showMsgBox(UserMsgBox::M_YESNO,
+      if (!cc->showMsgBox(MsgBoxFlags::M_YESNO,
                            "Unexpected server certificate",
                            text.c_str()))
-        throw AuthFailureException("Unexpected server certificate");
+        throw AuthCancelledException();
 
       status &= ~GNUTLS_CERT_INSECURE_ALGORITHM;
     }
 
     if (status != 0) {
       vlog.error("Unhandled certificate problems: 0x%x", status);
-      throw AuthFailureException("Unhandled certificate problems");
+      throw Exception("Unhandled certificate problems");
     }
 
     if (!hostname_match) {
@@ -639,10 +625,10 @@ void CSecurityTLS::checkSession()
                     "Do you want to make an exception for this "
                     "server?", client->getServerName(), info.data);
 
-      if (!msg->showMsgBox(UserMsgBox::M_YESNO,
+      if (!cc->showMsgBox(MsgBoxFlags::M_YESNO,
                            "Unexpected server certificate",
                            text.c_str()))
-        throw AuthFailureException("Unexpected server certificate");
+        throw AuthCancelledException();
     }
   }
 

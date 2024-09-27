@@ -16,6 +16,10 @@
  * USA.
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #ifndef HAVE_NETTLE
 #error "This source should not be compiled without HAVE_NETTLE defined"
 #endif
@@ -151,18 +155,18 @@ void SSecurityRSAAES::loadPrivateKey()
 {
   FILE* file = fopen(keyFile, "rb");
   if (!file)
-    throw ConnFailedException("failed to open key file");
+    throw Exception("failed to open key file");
   fseek(file, 0, SEEK_END);
   size_t size = ftell(file);
   if (size == 0 || size > MaxKeyFileSize) {
     fclose(file);
-    throw ConnFailedException("size of key file is zero or too big");
+    throw Exception("size of key file is zero or too big");
   }
   fseek(file, 0, SEEK_SET);
   std::vector<uint8_t> data(size);
   if (fread(data.data(), 1, data.size(), file) != size) {
     fclose(file);
-    throw ConnFailedException("failed to read key");
+    throw Exception("failed to read key");
   }
   fclose(file);
 
@@ -179,7 +183,7 @@ void SSecurityRSAAES::loadPrivateKey()
     loadPKCS8Key(der.data(), der.size());
     return;
   }
-  throw ConnFailedException("failed to import key");
+  throw Exception("failed to import key");
 }
 
 void SSecurityRSAAES::loadPKCS1Key(const uint8_t* data, size_t size)
@@ -190,7 +194,7 @@ void SSecurityRSAAES::loadPKCS1Key(const uint8_t* data, size_t size)
   if (!rsa_keypair_from_der(&pub, &serverKey, 0, size, data)) {
     rsa_private_key_clear(&serverKey);
     rsa_public_key_clear(&pub);
-    throw ConnFailedException("failed to import key");
+    throw Exception("failed to import key");
   }
   serverKeyLength = serverKey.size * 8;
   serverKeyN = new uint8_t[serverKey.size];
@@ -230,7 +234,7 @@ void SSecurityRSAAES::loadPKCS8Key(const uint8_t* data, size_t size)
   loadPKCS1Key(i.data, i.length);
   return;
 failed:
-  throw ConnFailedException("failed to import key");
+  throw Exception("failed to import key");
 }
 
 bool SSecurityRSAAES::processMsg()
@@ -557,11 +561,11 @@ void SSecurityRSAAES::verifyUserPass()
 #endif
   if (!valid->validate(sc, username, password)) {
     delete valid;
-    throw AuthFailureException("invalid password or username");
+    throw AuthFailureException("Authentication failed");
   }
   delete valid;
 #else
-  throw AuthFailureException("No password validator configured");
+  throw Exception("No password validator configured");
 #endif
 }
 
@@ -572,7 +576,7 @@ void SSecurityRSAAES::verifyPass()
   pg->getVncAuthPasswd(&passwd, &passwdReadOnly);
 
   if (passwd.empty())
-    throw AuthFailureException("No password configured for VNC Auth");
+    throw Exception("No password configured");
 
   if (password == passwd) {
     accessRights = AccessDefault;
@@ -584,7 +588,7 @@ void SSecurityRSAAES::verifyPass()
     return;
   }
 
-  throw AuthFailureException();
+  throw AuthFailureException("Authentication failed");
 }
 
 const char* SSecurityRSAAES::getUserName() const

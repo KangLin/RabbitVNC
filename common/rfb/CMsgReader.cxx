@@ -17,6 +17,10 @@
  * USA.
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <assert.h>
 #include <stdio.h>
 
@@ -27,9 +31,9 @@
 
 #include <rfb/msgTypes.h>
 #include <rfb/clipboardTypes.h>
+#include <rfb/util.h>
 #include <rfb/Exception.h>
 #include <rfb/LogWriter.h>
-#include <rfb/util.h>
 #include <rfb/CMsgHandler.h>
 #include <rfb/CMsgReader.h>
 

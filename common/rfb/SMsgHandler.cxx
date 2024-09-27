@@ -17,6 +17,10 @@
  * USA.
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <rfb/Exception.h>
 #include <rfb/LogWriter.h>
 #include <rfb/SMsgHandler.h>
@@ -68,6 +72,20 @@ void SMsgHandler::setEncodings(int nEncodings, const int32_t* encodings)
     supportsLEDState();
   if (client.supportsEncoding(pseudoEncodingQEMUKeyEvent) && firstQEMUKeyEvent)
     supportsQEMUKeyEvent();
+}
+
+void SMsgHandler::keyEvent(uint32_t /*keysym*/, uint32_t /*keycode*/,
+                           bool /*down*/)
+{
+}
+
+void SMsgHandler::pointerEvent(const Point& /*pos*/,
+                               uint8_t /*buttonMask*/)
+{
+}
+
+void SMsgHandler::clientCutText(const char* /*str*/)
+{
 }
 
 void SMsgHandler::handleClipboardCaps(uint32_t flags, const uint32_t* lengths)

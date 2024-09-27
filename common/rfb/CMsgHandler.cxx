@@ -16,6 +16,11 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
  * USA.
  */
+
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <stdio.h>
 
 #include <rfb/Exception.h>
@@ -52,11 +57,6 @@ void CMsgHandler::setExtendedDesktopSize(unsigned reason, unsigned result,
     return;
 
   server.setDimensions(width, height, layout);
-}
-
-void CMsgHandler::setPixelFormat(const PixelFormat& pf)
-{
-  server.setPF(pf);
 }
 
 void CMsgHandler::setName(const char* name)

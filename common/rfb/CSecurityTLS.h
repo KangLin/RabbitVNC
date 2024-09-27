@@ -28,7 +28,6 @@
 
 #include <rfb/CSecurity.h>
 #include <rfb/Security.h>
-#include <rfb/UserMsgBox.h>
 #include <rdr/InStream.h>
 #include <rdr/OutStream.h>
 #include <gnutls/gnutls.h>
@@ -36,14 +35,11 @@
 namespace rfb {
   class CSecurityTLS : public CSecurity {
   public:
-    CSecurityTLS(CConnection* cc, bool _anon, UserMsgBox *msg);
+    CSecurityTLS(CConnection* cc, bool _anon);
     virtual ~CSecurityTLS();
     bool processMsg() override;
     int getType() const override { return anon ? secTypeTLSNone : secTypeX509None; }
     bool isSecure() const override { return !anon; }
-
-    static StringParameter X509CA;
-    static StringParameter X509CRL;
 
   protected:
     void shutdown();
@@ -63,9 +59,6 @@ namespace rfb {
 
     rdr::InStream* rawis;
     rdr::OutStream* rawos;
-    
-    UserMsgBox *msg;
-    
   };
 }
 

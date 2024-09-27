@@ -18,6 +18,10 @@
  * USA.
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <rfb/encodings.h>
 #include <rfb/SConnection.h>
 #include <rfb/HextileEncoder.h>

@@ -17,6 +17,10 @@
  * USA.
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <rdr/OutStream.h>
 #include <rfb/Exception.h>
 #include <rfb/encodings.h>

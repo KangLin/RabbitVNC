@@ -27,7 +27,7 @@
 #include <rfb/CSecurityVeNCrypt.h>
 #include <rfb/CSecurityVncAuth.h>
 #include <rfb/CSecurityPlain.h>
-#include <rdr/Exception.h>
+#include <rfb/Exception.h>
 #include <rfb/Security.h>
 #ifdef HAVE_GNUTLS
 #include <rfb/CSecurityTLS.h>
@@ -38,7 +38,6 @@
 #include <rfb/CSecurityMSLogonII.h>
 #endif
 
-using namespace rdr;
 using namespace rfb;
 
 StringParameter SecurityClient::secTypes
@@ -55,46 +54,44 @@ StringParameter SecurityClient::secTypes
  "X509Plain,TLSPlain,X509Vnc,TLSVnc,X509None,TLSNone,"
 #endif
 #ifdef HAVE_NETTLE
- "RA2,RA2_256,RA2ne,RA2ne_256,DH,MSLogonII"
+ "RA2,RA2_256,RA2ne,RA2ne_256,DH,MSLogonII,"
 #endif
  "VncAuth,None",
 ConfViewer);
 
 CSecurity* SecurityClient::GetCSecurity(CConnection* cc, uint32_t secType)
 {
-    assert(upg != nullptr); /* (upg == nullptr) means bug in the viewer, please call rfb::SecurityClient::setUserPasswdGetter */
-    
-    if (!IsSupported(secType))
-        goto bail;
-    
-    switch (secType) {
-    case secTypeNone: return new CSecurityNone(cc);
-    case secTypeVncAuth: return new CSecurityVncAuth(cc, upg);
-    case secTypeVeNCrypt: return new CSecurityVeNCrypt(cc, this);
-    case secTypePlain: return new CSecurityPlain(cc, upg);
+  if (!IsSupported(secType))
+    goto bail;
+
+  switch (secType) {
+  case secTypeNone: return new CSecurityNone(cc);
+  case secTypeVncAuth: return new CSecurityVncAuth(cc);
+  case secTypeVeNCrypt: return new CSecurityVeNCrypt(cc, this);
+  case secTypePlain: return new CSecurityPlain(cc);
 #ifdef HAVE_GNUTLS
-    case secTypeTLSNone:
-        return new CSecurityStack(cc, secTypeTLSNone,
-                                  new CSecurityTLS(cc, true, msg));
-    case secTypeTLSVnc:
-        return new CSecurityStack(cc, secTypeTLSVnc,
-                                  new CSecurityTLS(cc, true, msg),
-                                  new CSecurityVncAuth(cc, upg));
-    case secTypeTLSPlain:
-        return new CSecurityStack(cc, secTypeTLSPlain,
-                                  new CSecurityTLS(cc, true, msg),
-                                  new CSecurityPlain(cc, upg));
-    case secTypeX509None:
-        return new CSecurityStack(cc, secTypeX509None,
-                                  new CSecurityTLS(cc, false, msg));
-    case secTypeX509Vnc:
-        return new CSecurityStack(cc, secTypeX509Vnc,
-                                  new CSecurityTLS(cc, false, msg),
-                                  new CSecurityVncAuth(cc, upg));
-    case secTypeX509Plain:
-        return new CSecurityStack(cc, secTypeX509Plain,
-                                  new CSecurityTLS(cc, false, msg),
-                                  new CSecurityPlain(cc, upg));
+  case secTypeTLSNone:
+    return new CSecurityStack(cc, secTypeTLSNone,
+                              new CSecurityTLS(cc, true));
+  case secTypeTLSVnc:
+    return new CSecurityStack(cc, secTypeTLSVnc,
+                              new CSecurityTLS(cc, true),
+                              new CSecurityVncAuth(cc));
+  case secTypeTLSPlain:
+    return new CSecurityStack(cc, secTypeTLSPlain,
+                              new CSecurityTLS(cc, true),
+                              new CSecurityPlain(cc));
+  case secTypeX509None:
+    return new CSecurityStack(cc, secTypeX509None,
+                              new CSecurityTLS(cc, false));
+  case secTypeX509Vnc:
+    return new CSecurityStack(cc, secTypeX509Vnc,
+                              new CSecurityTLS(cc, false),
+                              new CSecurityVncAuth(cc));
+  case secTypeX509Plain:
+    return new CSecurityStack(cc, secTypeX509Plain,
+                              new CSecurityTLS(cc, false),
+                              new CSecurityPlain(cc));
 #endif
 #ifdef HAVE_NETTLE
   case secTypeRA2:

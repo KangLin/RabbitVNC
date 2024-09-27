@@ -17,6 +17,10 @@
  * USA.
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <stdio.h>
 #include <string.h>
 
@@ -454,7 +458,7 @@ void SConnection::approveConnection(bool accept, const char* reason)
       os->writeU32(secResultFailed);
       if (!client.beforeVersion(3,8)) { // 3.8 onwards have failure message
         if (!reason)
-          reason = "Authentication failure";
+          reason = "Connection rejected";
         os->writeU32(strlen(reason));
         os->writeBytes((const uint8_t*)reason, strlen(reason));
       }
@@ -472,7 +476,7 @@ void SConnection::approveConnection(bool accept, const char* reason)
     if (reason)
       throw AuthFailureException(reason);
     else
-      throw AuthFailureException();
+      throw AuthFailureException("Connection rejected");
   }
 }
 

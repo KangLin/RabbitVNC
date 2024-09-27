@@ -21,20 +21,14 @@
 
 #include <rfb/CSecurity.h>
 #include <rfb/Security.h>
-#include <rfb/UserPasswdGetter.h>
 
 namespace rfb {
 
   class CSecurityPlain : public CSecurity {
   public:
-    CSecurityPlain(CConnection* cc, UserPasswdGetter* upg)
-      : CSecurity(cc), upg(upg) {}
-
+    CSecurityPlain(CConnection* cc_) : CSecurity(cc_) {}
     bool processMsg() override;
     int getType() const override { return secTypePlain; }
-  private:
-    UserPasswdGetter *upg;
   };
-  
 }
 #endif

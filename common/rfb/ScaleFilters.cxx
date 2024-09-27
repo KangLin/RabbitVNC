@@ -16,6 +16,10 @@
  * USA.
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <string.h>
 #include <assert.h>
 #include <math.h>
@@ -23,7 +27,7 @@
 #include <rfb/Rect.h>
 #include <rfb/ScaleFilters.h>
 #include <os/os.h>
-
+ 
 using namespace rfb;
 
 //

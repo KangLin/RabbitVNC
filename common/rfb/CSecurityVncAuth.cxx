@@ -21,13 +21,15 @@
 // XXX not thread-safe, because d3des isn't - do we need to worry about this?
 //
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <string.h>
 #include <stdio.h>
-#include <assert.h>
 
 #include <rfb/CConnection.h>
 #include <rfb/CSecurityVncAuth.h>
-#include <rfb/util.h>
 #include <rfb/Security.h>
 extern "C" {
 #include <rfb/d3des.h>
@@ -39,10 +41,6 @@ extern "C" {
 using namespace rfb;
 
 static const int vncAuthChallengeSize = 16;
-CSecurityVncAuth::CSecurityVncAuth(CConnection* cc, UserPasswdGetter* upg)
-    : CSecurity(cc),
-    upg(upg)
-{}
 
 bool CSecurityVncAuth::processMsg()
 {
@@ -56,9 +54,7 @@ bool CSecurityVncAuth::processMsg()
   uint8_t challenge[vncAuthChallengeSize];
   is->readBytes(challenge, vncAuthChallengeSize);
   std::string passwd;
-  
-  assert(upg != NULL); /* (upg == NULL) means bug in the viewer, please call SecurityClient::setUserPasswdGetter */
-  upg->getUserPasswd(cc->isSecure(), nullptr, &passwd);
+  cc->getUserPasswd(cc->isSecure(), nullptr, &passwd);
 
   // Calculate the correct response
   uint8_t key[8];

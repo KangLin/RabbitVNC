@@ -22,6 +22,10 @@
  * SSecurityVeNCrypt
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <rfb/SSecurityVeNCrypt.h>
 #include <rfb/Exception.h>
 #include <rfb/LogWriter.h>
@@ -29,8 +33,6 @@
 #include <rdr/OutStream.h>
 
 using namespace rfb;
-using namespace rdr;
-using namespace std;
 
 static LogWriter vlog("SVeNCrypt");
 
@@ -97,8 +99,8 @@ bool SSecurityVeNCrypt::processMsg()
     case 0x0001: /* 0.1 Legacy VeNCrypt, not supported */
       os->writeU8(0xFF); /* This is not OK */
       os->flush();
-      throw AuthFailureException("The client cannot support the server's "
-				 "VeNCrypt version");
+      throw Exception("The client cannot support the server's "
+                       "VeNCrypt version");
 
     case 0x0002: /* 0.2 */
       os->writeU8(0); /* OK */
@@ -107,7 +109,7 @@ bool SSecurityVeNCrypt::processMsg()
     default:
       os->writeU8(0xFF); /* Not OK */
       os->flush();
-      throw AuthFailureException("The client returned an unsupported VeNCrypt version");
+      throw Exception("The client returned an unsupported VeNCrypt version");
     }
   }
 
@@ -116,7 +118,7 @@ bool SSecurityVeNCrypt::processMsg()
    * followed by authentication types (uint32_t:s)
    */
   if (!haveSentTypes) {
-    list<uint32_t> listSubTypes;
+    std::list<uint32_t> listSubTypes;
 
     listSubTypes = security->GetEnabledExtSecTypes();
 
@@ -136,7 +138,7 @@ bool SSecurityVeNCrypt::processMsg()
       os->flush(); 
       haveSentTypes = true;
     } else
-      throw AuthFailureException("There are no VeNCrypt sub-types to send to the client");
+      throw Exception("There are no VeNCrypt sub-types to send to the client");
   }
 
   /* get type back from client (must be one of the ones we sent) */
@@ -161,7 +163,7 @@ bool SSecurityVeNCrypt::processMsg()
 
     /* Set up the stack according to the chosen type */
     if (chosenType == secTypeInvalid || chosenType == secTypeVeNCrypt)
-      throw AuthFailureException("No valid VeNCrypt sub-type");
+      throw Exception("No valid VeNCrypt sub-type");
 
     ssecurity = security->GetSSecurity(sc, chosenType);
   }

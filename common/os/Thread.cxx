@@ -16,6 +16,10 @@
  * USA.
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #ifdef WIN32
 #include <windows.h>
 #else
@@ -46,6 +50,12 @@ Thread::~Thread()
 {
 #ifdef WIN32
   delete (HANDLE*)threadId;
+#elif ANDROID
+    if (isRunning()) {
+        // See: https://github.com/Hax4us/Hax4us.github.io/blob/master/Pthread_patches/Bpthread.h
+        pthread_kill(*(pthread_t*)threadId, SIGUSR1);
+    }
+    delete (pthread_t*)threadId;
 #else
   if (isRunning())
     pthread_cancel(*(pthread_t*)threadId);

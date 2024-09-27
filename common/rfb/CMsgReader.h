@@ -24,7 +24,7 @@
 #ifndef __RFB_CMSGREADER_H__
 #define __RFB_CMSGREADER_H__
 
-#include <rdr/types.h>
+#include <stdint.h>
 
 #include <rfb/Rect.h>
 #include <rfb/encodings.h>

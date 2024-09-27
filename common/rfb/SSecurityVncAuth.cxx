@@ -21,6 +21,10 @@
 // XXX not thread-safe, because d3des isn't - do we need to worry about this?
 //
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <rfb/SSecurityVncAuth.h>
 #include <rdr/RandomStream.h>
 #include <rfb/SConnection.h>
@@ -96,7 +100,7 @@ bool SSecurityVncAuth::processMsg()
   pg->getVncAuthPasswd(&passwd, &passwdReadOnly);
 
   if (passwd.empty())
-    throw AuthFailureException("No password configured for VNC Auth");
+    throw Exception("No password configured");
 
   if (verifyResponse(passwd.c_str())) {
     accessRights = AccessDefault;
@@ -109,7 +113,7 @@ bool SSecurityVncAuth::processMsg()
     return true;
   }
 
-  throw AuthFailureException();
+  throw AuthFailureException("Authentication failed");
 }
 
 VncAuthPasswdParameter::VncAuthPasswdParameter(const char* name_,

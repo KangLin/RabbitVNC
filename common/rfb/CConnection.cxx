@@ -16,6 +16,11 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
  * USA.
  */
+
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
@@ -327,7 +332,7 @@ bool CConnection::processSecurityResultMsg()
 
   if (server.beforeVersion(3,8)) {
     state_ = RFBSTATE_INVALID;
-    throw AuthFailureException();
+    throw AuthFailureException("Authentication failed");
   }
 
   state_ = RFBSTATE_SECURITY_REASON;

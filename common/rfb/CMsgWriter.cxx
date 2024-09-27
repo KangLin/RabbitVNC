@@ -16,6 +16,11 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307,
  * USA.
  */
+
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <stdio.h>
 
 #include <rdr/OutStream.h>
@@ -168,7 +173,7 @@ void CMsgWriter::writeKeyEvent(uint32_t keysym, uint32_t keycode, bool down)
 }
 
 
-void CMsgWriter::writePointerEvent(const Point& pos, int buttonMask)
+void CMsgWriter::writePointerEvent(const Point& pos, uint8_t buttonMask)
 {
   Point p(pos);
   if (p.x < 0) p.x = 0;

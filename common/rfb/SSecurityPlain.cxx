@@ -17,6 +17,10 @@
  * USA.
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 #include <rfb/SSecurityPlain.h>
 #include <rfb/SConnection.h>
 #include <rfb/Exception.h>
@@ -83,7 +87,7 @@ bool SSecurityPlain::processMsg()
   char password[1024];
 
   if (!valid)
-    throw AuthFailureException("No password validator configured");
+    throw Exception("No password validator configured");
 
   if (state == 0) {
     if (!is->hasData(8))
@@ -110,7 +114,7 @@ bool SSecurityPlain::processMsg()
     username[ulen] = 0;
     plen = 0;
     if (!valid->validate(sc, username, password))
-      throw AuthFailureException("invalid password or username");
+      throw AuthFailureException("Authentication failed");
   }
 
   return true;
